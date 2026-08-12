@@ -1,0 +1,15 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended", "group:allNonMajor"],
+	"dependencyDashboard": false,
+	"packageRules": [
+		{
+			"matchUpdateTypes": ["minor", "patch", "pin", "digest"]
+		},
+		{
+			"description": "drupal/core is the supported-range declaration for a driver, not a dependency to chase",
+			"matchPackageNames": ["drupal/core"],
+			"enabled": false
+		}
+	]
+}

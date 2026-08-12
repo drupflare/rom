@@ -1,0 +1,77 @@
+{
+	"name": "drupflare/rom",
+	"description": "A Drupal 11 database driver for Cloudflare Durable Object SQLite (ctx.storage.sql).",
+	"type": "drupal-module",
+	"license": "MIT",
+	"keywords": [
+		"drupal",
+		"drupal-driver",
+		"database",
+		"driver",
+		"sqlite",
+		"cloudflare",
+		"durable-objects",
+		"workers",
+		"serverless"
+	],
+	"homepage": "https://github.com/drupflare/rom",
+	"authors": [
+		{
+			"name": "Gregory Mitchell",
+			"email": "me@gmitch215.xyz",
+			"role": "Developer"
+		}
+	],
+	"support": {
+		"issues": "https://github.com/drupflare/rom/issues",
+		"source": "https://github.com/drupflare/rom"
+	},
+	"require": {
+		"php": "^8.3",
+		"ext-json": "*",
+		"drupal/core": "^11.2"
+	},
+	"require-dev": {
+		"ext-pdo_sqlite": "*",
+		"drupal/coder": "^9.0",
+		"phpstan/phpstan": "^2.2",
+		"phpunit/php-code-coverage": "^11.0 || ^12.0"
+	},
+	"suggest": {
+		"drupflare/drupflare": "Mail, outbound HTTP, images and logging bridged to Workers bindings. Needed by the same deployments that need this driver."
+	},
+	"autoload": {
+		"psr-4": {
+			"Drupal\\cfw_do_sqlite\\": "src/"
+		}
+	},
+	"extra": {
+		"installer-name": "cfw_do_sqlite"
+	},
+	"repositories": [
+		{
+			"type": "composer",
+			"url": "https://packages.drupal.org/8"
+		}
+	],
+	"config": {
+		"sort-packages": true,
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true,
+			"drupal/core-composer-scaffold": false,
+			"symfony/runtime": false
+		}
+	},
+	"scripts": {
+		"analyze": "phpstan analyse --memory-limit=1G",
+		"lint": "phpcs",
+		"lint:fix": "phpcbf",
+		"test": "php tests/run-driver-suite.php"
+	},
+	"scripts-descriptions": {
+		"analyze": "Runs PHPStan over src/ and tests/ at the level pinned in phpstan.neon.",
+		"lint": "Runs phpcs with the ruleset in phpcs.xml.dist.",
+		"lint:fix": "Runs phpcbf over the same ruleset.",
+		"test": "Runs the driver suite; needs a Drupal 11.2+ root in $DRUPAL_ROOT or argv[1]."
+	}
+}
