@@ -2,9 +2,9 @@ name: Build Driver
 
 on:
   push:
-    branches: [master]
+    branches: [master, feat/*, ver/*, renovate/*]
   pull_request:
-    branches: [master]
+    branches: [master, feat/*, ver/*, renovate/*]
   workflow_dispatch:
 
 concurrency:

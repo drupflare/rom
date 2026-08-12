@@ -2,9 +2,9 @@ name: Check Test Coverage
 
 on:
   push:
-    branches: [master, feat/*, ver/*]
+    branches: [master, feat/*, ver/*, renovate/*]
   pull_request:
-    branches: [master, feat/*, ver/*]
+    branches: [master, feat/*, ver/*, renovate/*]
   workflow_dispatch:
 
 concurrency:
