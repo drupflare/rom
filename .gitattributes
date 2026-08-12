@@ -2,3 +2,31 @@
 *.png binary
 *.jpg binary
 *.ico binary
+
+# keep the Packagist archive to the code a consumer installs; everything below is
+# development-only and would otherwise ship inside web/modules/contrib.
+# the directories are listed twice on purpose: git archive prunes a directory marked
+# export-ignore, but `git check-attr` on a file inside it reports "unspecified", so the
+# /** form is what makes the exclusion verifiable per file rather than only documented
+/.github export-ignore
+/.github/** export-ignore
+/.husky export-ignore
+/.husky/** export-ignore
+/.vscode export-ignore
+/.vscode/** export-ignore
+/tests export-ignore
+/tests/** export-ignore
+/.editorconfig export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/.markdownlint.json export-ignore
+/.prettierignore export-ignore
+/.prettierrc export-ignore
+/bun.lock export-ignore
+/codecov.yml export-ignore
+/package.json export-ignore
+/phpcs.xml.dist export-ignore
+/phpstan.neon export-ignore
+/renovate.json export-ignore
+/CLAUDE.md export-ignore
+/PUBLISHING.md export-ignore
