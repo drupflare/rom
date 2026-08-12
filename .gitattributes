@@ -30,3 +30,7 @@
 /renovate.json export-ignore
 /CLAUDE.md export-ignore
 /PUBLISHING.md export-ignore
+
+# static-analysis stubs; loading them at runtime is a Cannot-redeclare fatal
+stubs/ export-ignore
+stubs/** export-ignore
