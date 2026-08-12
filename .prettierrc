@@ -1,0 +1,41 @@
+{
+	"plugins": ["@prettier/plugin-php", "@prettier/plugin-xml", "prettier-plugin-sh"],
+	"printWidth": 100,
+	"singleQuote": true,
+	"semi": true,
+	"useTabs": true,
+	"tabWidth": 4,
+	"singleAttributePerLine": true,
+	"trailingComma": "none",
+	"endOfLine": "lf",
+	"overrides": [
+		{
+			"files": "*.{php,module,install,inc,theme,profile,engine}",
+			"options": {
+				"parser": "php"
+			}
+		},
+		{
+			"files": "*.{yml,yaml}",
+			"options": {
+				"useTabs": false,
+				"tabWidth": 2
+			}
+		},
+		{
+			"files": "*.jsonc",
+			"options": {
+				"parser": "json"
+			}
+		},
+		{
+			"files": "*.xml.dist",
+			"options": {
+				"parser": "xml",
+				"singleAttributePerLine": false,
+				"xmlWhitespaceSensitivity": "ignore",
+				"bracketSameLine": true
+			}
+		}
+	]
+}

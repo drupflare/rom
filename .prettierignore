@@ -1,0 +1,11 @@
+node_modules/
+vendor/
+drupal-root/
+coverage/
+bun.lock
+LICENSE
+.husky/
+
+# PHP is formatted by @prettier/plugin-php, configured in .prettierrc to the house
+# style: tabs, printWidth 100. PHPCS still owns everything semantic; the sniffs that
+# overlap prettier are excluded in phpcs.xml.dist with the measurement that found them.
