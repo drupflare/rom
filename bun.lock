@@ -1,0 +1,60 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "@drupflare/rom",
+      "devDependencies": {
+        "@prettier/plugin-php": "^0.25.0",
+        "@prettier/plugin-xml": "^3.4.2",
+        "husky": "^9.1.7",
+        "lint-staged": "^17.3.0",
+        "prettier": "^3.9.6",
+        "prettier-plugin-sh": "^0.19.0",
+      },
+    },
+  },
+  "packages": {
+    "@prettier/plugin-php": ["@prettier/plugin-php@0.25.0", "", { "dependencies": { "linguist-languages": "^8.0.0", "php-parser": "^3.4.0" }, "peerDependencies": { "prettier": "^3.0.0" } }, "sha512-hi0NhucbspYqw5pZYKywEk5CxsBwA0pBcG6K08AZw7OQDoUm4Hhbxql7z/SzQGeTRHqak5PwDnVNgttZiZdrlg=="],
+
+    "@prettier/plugin-xml": ["@prettier/plugin-xml@3.4.2", "", { "dependencies": { "@xml-tools/parser": "^1.0.11" }, "peerDependencies": { "prettier": "^3.0.0" } }, "sha512-/UyNlHfkuLXG6Ed85KB0WBF283xn2yavR+UtRibBRUcvEJId2DSLdGXwJ/cDa1X++SWDPzq3+GSFniHjkNy7yg=="],
+
+    "@reteps/dockerfmt": ["@reteps/dockerfmt@0.5.4", "", { "optionalDependencies": { "@reteps/dockerfmt-darwin-arm64": "0.5.4", "@reteps/dockerfmt-darwin-x64": "0.5.4", "@reteps/dockerfmt-linux-arm64": "0.5.4", "@reteps/dockerfmt-linux-x64": "0.5.4" }, "bin": { "dockerfmt": "dist/launcher.js" } }, "sha512-HEGgXVVOb+JtGUSSzXl/XPKFIZjMDTUoHarCjaQdkY+cb5M9K/O3b5xm+x0IPIk3SfHurbc0bSgcFsQlzjitxA=="],
+
+    "@reteps/dockerfmt-darwin-arm64": ["@reteps/dockerfmt-darwin-arm64@0.5.4", "", { "os": "darwin", "cpu": "arm64" }, "sha512-urMqV+dQyvVI8/WrXwClX9e1PEyS35wFdwJjpZYmL09AkV4Io5U1oam8UBKK7jZk0+YsdF88ay6e86Kn6DIyQg=="],
+
+    "@reteps/dockerfmt-darwin-x64": ["@reteps/dockerfmt-darwin-x64@0.5.4", "", { "os": "darwin", "cpu": "x64" }, "sha512-fJORy6DFxbgDiMqxpLTPZlb5KUY0Vq0iR4NGnyKnuYZ9LdZUS508DK2kt/AJ87/jIKNV1qRG0JXG1Tc6xdvWjw=="],
+
+    "@reteps/dockerfmt-linux-arm64": ["@reteps/dockerfmt-linux-arm64@0.5.4", "", { "os": "linux", "cpu": "arm64" }, "sha512-6pVakO06eXtDuvxy1Dnjs/gQyUoGGycle8PRSt5IFRwLi/AVaOQwfkfmW0WP8VH9wNUeti6BfJ3ksTn2G+XMxg=="],
+
+    "@reteps/dockerfmt-linux-x64": ["@reteps/dockerfmt-linux-x64@0.5.4", "", { "os": "linux", "cpu": "x64" }, "sha512-OD6SIlUV1D4TgJoTui3FMBAZsGbTSPYsiT0BKhD6jMUcJb3GpFTa7dY9rL8rP9FUqfL7OTHVUGUOL4Rh64Olog=="],
+
+    "@xml-tools/parser": ["@xml-tools/parser@1.0.11", "", { "dependencies": { "chevrotain": "7.1.1" } }, "sha512-aKqQ077XnR+oQtHJlrAflaZaL7qZsulWc/i/ZEooar5JiWj1eLt0+Wg28cpa+XLney107wXqneC+oG1IZvxkTA=="],
+
+    "chevrotain": ["chevrotain@7.1.1", "", { "dependencies": { "regexp-to-ast": "0.5.0" } }, "sha512-wy3mC1x4ye+O+QkEinVJkPf5u2vsrDIYW9G7ZuwFl6v/Yu0LwUuT2POsb+NUWApebyxfkQq6+yDfRExbnI5rcw=="],
+
+    "husky": ["husky@9.1.7", "", { "bin": { "husky": "bin.js" } }, "sha512-5gs5ytaNjBrh5Ow3zrvdUUY+0VxIuWVL4i9irt6friV+BqdCfmV11CQTWMiBYWHbXhco+J1kHfTOUkePhCDvMA=="],
+
+    "linguist-languages": ["linguist-languages@8.2.0", "", {}, "sha512-KCUUH9x97QWYU0SXOCGxUrZR6cSfuQrMhABB7L/0I8N0LXOeaKe7+RZs7FAwvWCV2qKfZ4Wv1luLq4OfMezSJg=="],
+
+    "lint-staged": ["lint-staged@17.3.0", "", { "dependencies": { "picomatch": "^4.0.5", "string-argv": "^0.3.2", "tinyexec": "^1.2.4" }, "optionalDependencies": { "yaml": "^2.9.0" }, "bin": { "lint-staged": "bin/lint-staged.js" } }, "sha512-woZS3vNe3UKqBaLPvbLOtKRY4tLANpWQhom12MGWqC8Mh1lCOO+WgSwmX2amjJAqTY9BkXYW87fCUH5H9Ph6xw=="],
+
+    "php-parser": ["php-parser@3.7.0", "", {}, "sha512-JRc1t78GZAEa+MuzVC5A5RJS1NDFTS4UnprUEu/NnsN9cyHbGZLUqghO9IQZUSCay62HYQiWd3PxyWAEF45zmA=="],
+
+    "picomatch": ["picomatch@4.0.5", "", {}, "sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A=="],
+
+    "prettier": ["prettier@3.9.6", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g=="],
+
+    "prettier-plugin-sh": ["prettier-plugin-sh@0.19.0", "", { "dependencies": { "@reteps/dockerfmt": "^0.5.4", "sh-syntax": "^0.6.0" }, "peerDependencies": { "prettier": "^3.6.0" } }, "sha512-39VXFZH/cOGtcuu8aeSvqp/hhwomOR4QroZUj+jBz2cNb3os9s0sqFZSNlYts6jdtLLDU7D2YT3Z1+abtb7adQ=="],
+
+    "regexp-to-ast": ["regexp-to-ast@0.5.0", "", {}, "sha512-tlbJqcMHnPKI9zSrystikWKwHkBqu2a/Sgw01h3zFjvYrMxEDYHzzoMZnUrbIfpTFEsoRnnviOXNCzFiSc54Qw=="],
+
+    "sh-syntax": ["sh-syntax@0.6.0", "", {}, "sha512-52VK6z/cdZHv7UURjIcwfBUQZrAhIEEe0bY4lrkfypjnFIKsDZdD3Uaz/dBiw/sF8BeX0Mssv140s8EnrsJ9dQ=="],
+
+    "string-argv": ["string-argv@0.3.2", "", {}, "sha512-aqD2Q0144Z+/RqG52NeHEkZauTAUWJO8c6yTftGJKO3Tja5tUgIfmIl6kExvhtxSDP7fXB6DvzkfMpCd/F3G+Q=="],
+
+    "tinyexec": ["tinyexec@1.3.0", "", {}, "sha512-QKAl9m8gWWGHV8jZcPeym6j+XULi6tOf1mT83WYJ4Lk2ytW/uwAWkrP0uFsdoYMdueVJ0qs26wZ+23xeB4ibNQ=="],
+
+    "yaml": ["yaml@2.9.0", "", { "bin": { "yaml": "bin.mjs" } }, "sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA=="],
+  }
+}
