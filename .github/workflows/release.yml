@@ -20,7 +20,6 @@ jobs:
 
     permissions:
       contents: write
-      id-token: write
 
     steps:
       - uses: actions/checkout@v7
@@ -62,15 +61,40 @@ jobs:
         env:
           PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
           PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
+          # derived, not hardcoded: this repo was `drupal-do` hours before its first release, and a
+          # hardcoded URL goes stale silently on the next rename
+          REPO_URL: https://github.com/${{ github.repository }}
         run: |
           if [ -z "$PACKAGIST_USERNAME" ] || [ -z "$PACKAGIST_TOKEN" ]; then
             echo "No Packagist credentials configured; relying on the GitHub push hook."
             exit 0
           fi
-          curl -fsS -XPOST \
+          # This call is a NUDGE, not the delivery mechanism -- Packagist's GitHub webhook is what
+          # actually publishes a tag. So it must never fail the release. `curl -fsS` did exactly
+          # that: a 403 became exit 22 and killed the whole job.
+          code=$(curl -sS -o /tmp/packagist.out -w '%{http_code}' -XPOST \
             -H 'content-type:application/json' \
             "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_TOKEN}" \
-            -d '{"repository":{"url":"https://github.com/drupflare/rom"}}'
+            -d "{\"repository\":{\"url\":\"${REPO_URL}\"}}" || echo 000)
+          case "$code" in
+            20*)
+              echo "Packagist accepted the update ($code)."
+              ;;
+            403)
+              echo "Packagist returned 403 for ${REPO_URL}. Causes, in order of likelihood:"
+              echo "  1. the package is not submitted yet -- update-package only updates an"
+              echo "     EXISTING package, so the first publish must be done at"
+              echo "     https://packagist.org/packages/submit"
+              echo "  2. PACKAGIST_USERNAME must be the ACCOUNT that owns the package, not the"
+              echo "     vendor name from the package title"
+              echo "  3. the repository URL must match the one Packagist has registered, exactly"
+              echo "Not failing the release: the GitHub push hook delivers the tag regardless."
+              ;;
+            *)
+              echo "Packagist returned $code; not failing the release."
+              cat /tmp/packagist.out 2>/dev/null || true
+              ;;
+          esac
 
   nightly-gate:
     if: github.event_name == 'schedule'
@@ -177,15 +201,40 @@ jobs:
         env:
           PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
           PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
+          # derived, not hardcoded: this repo was `drupal-do` hours before its first release, and a
+          # hardcoded URL goes stale silently on the next rename
+          REPO_URL: https://github.com/${{ github.repository }}
         run: |
           if [ -z "$PACKAGIST_USERNAME" ] || [ -z "$PACKAGIST_TOKEN" ]; then
             echo "No Packagist credentials configured; relying on the GitHub push hook."
             exit 0
           fi
-          curl -fsS -XPOST \
+          # This call is a NUDGE, not the delivery mechanism -- Packagist's GitHub webhook is what
+          # actually publishes a tag. So it must never fail the release. `curl -fsS` did exactly
+          # that: a 403 became exit 22 and killed the whole job.
+          code=$(curl -sS -o /tmp/packagist.out -w '%{http_code}' -XPOST \
             -H 'content-type:application/json' \
             "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_TOKEN}" \
-            -d '{"repository":{"url":"https://github.com/drupflare/rom"}}'
+            -d "{\"repository\":{\"url\":\"${REPO_URL}\"}}" || echo 000)
+          case "$code" in
+            20*)
+              echo "Packagist accepted the update ($code)."
+              ;;
+            403)
+              echo "Packagist returned 403 for ${REPO_URL}. Causes, in order of likelihood:"
+              echo "  1. the package is not submitted yet -- update-package only updates an"
+              echo "     EXISTING package, so the first publish must be done at"
+              echo "     https://packagist.org/packages/submit"
+              echo "  2. PACKAGIST_USERNAME must be the ACCOUNT that owns the package, not the"
+              echo "     vendor name from the package title"
+              echo "  3. the repository URL must match the one Packagist has registered, exactly"
+              echo "Not failing the release: the GitHub push hook delivers the tag regardless."
+              ;;
+            *)
+              echo "Packagist returned $code; not failing the release."
+              cat /tmp/packagist.out 2>/dev/null || true
+              ;;
+          esac
       - name: Nightly to Job Summary
         run: |
           echo "## Nightly ${{ env.SHORT_SHA }}" >> $GITHUB_STEP_SUMMARY
