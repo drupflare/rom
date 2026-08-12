@@ -1,0 +1,91 @@
+name: Build Driver
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DRUPAL_VERSION: 11.4.5
+
+jobs:
+  build:
+    name: Build (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4', '8.5']
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: json, mbstring
+          coverage: none
+      - name: Validate composer.json
+        run: composer validate --strict --no-check-lock
+      - name: Run PHP Lint
+        run: php tests/lint.php
+      - name: Cache Composer Downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/composer
+          key: composer-${{ matrix.php }}-${{ hashFiles('composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-
+      - name: Install Composer Dependencies
+        run: composer install --no-interaction --no-progress
+      - name: Check Coding Standards
+        run: ./vendor/bin/phpcs
+      - name: Run PHPStan
+        run: ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress --error-format=github
+
+  e2e:
+    name: End-to-End Tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: build
+
+    permissions:
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4', '8.5']
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_sqlite, sqlite3, json, mbstring, dom, xml
+          coverage: none
+      - name: Cache Drupal Tree
+        id: drupal
+        uses: actions/cache@v6
+        with:
+          path: drupal-root
+          key: drupal-${{ env.DRUPAL_VERSION }}
+      - name: Fetch Drupal Tree
+        if: steps.drupal.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL --retry 3 "https://ftp.drupal.org/files/projects/drupal-${DRUPAL_VERSION}.tar.gz" -o /tmp/drupal.tar.gz
+          mkdir -p drupal-root
+          tar -xzf /tmp/drupal.tar.gz --strip-components=1 -C drupal-root
+      - name: Run Driver Suite E2E Tests
+        run: php -d opcache.enable_cli=0 tests/run-driver-suite.php ./drupal-root

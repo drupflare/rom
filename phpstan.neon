@@ -1,0 +1,10 @@
+parameters:
+    level: 5
+    paths:
+        - src
+    treatPhpDocTypesAsCertain: false
+    scanDirectories:
+        - vendor/drupal/core/modules/sqlite/src
+    stubFiles:
+        # declaration-only; never loaded at runtime, see stubs/vrzno.php
+        - stubs/vrzno.php

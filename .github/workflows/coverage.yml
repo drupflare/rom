@@ -1,0 +1,92 @@
+name: Check Test Coverage
+
+on:
+  push:
+    branches: [master, feat/*, ver/*]
+  pull_request:
+    branches: [master, feat/*, ver/*]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DRUPAL_VERSION: 11.4.5
+
+jobs:
+  coverage:
+    name: Driver Suite Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, sqlite3, json, mbstring, dom, xml
+          coverage: pcov
+          ini-values: pcov.directory=${{ github.workspace }}/src
+      - name: Cache Composer Downloads
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/composer
+          key: composer-8.4-${{ hashFiles('composer.json') }}
+          restore-keys: composer-8.4-
+      - name: Install Composer Dependencies
+        run: composer install --no-interaction --no-progress
+      - name: Cache Drupal Tree
+        id: drupal
+        uses: actions/cache@v6
+        with:
+          path: drupal-root
+          key: drupal-${{ env.DRUPAL_VERSION }}
+      - name: Fetch Drupal Tree
+        if: steps.drupal.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL --retry 3 "https://ftp.drupal.org/files/projects/drupal-${DRUPAL_VERSION}.tar.gz" -o /tmp/drupal.tar.gz
+          mkdir -p drupal-root
+          tar -xzf /tmp/drupal.tar.gz --strip-components=1 -C drupal-root
+      - name: Run Driver Suite with Coverage
+        run: php -d opcache.enable_cli=0 tests/coverage.php ./drupal-root
+      - name: Upload Coverage to Codecov
+        if: success() || failure()
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: drupflare/rom
+          fail_ci_if_error: false
+          report_type: coverage
+          flags: driver-suite
+          files: coverage/rom.clover.xml
+      - name: Archive Coverage
+        if: success() || failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 30
+      - name: Coverage to Job Summary
+        if: success() || failure()
+        run: |
+          echo "## Driver Suite Coverage" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage/rom.coverage.txt ]; then
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat coverage/rom.coverage.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo 'No report was produced; the run refused to measure.' >> $GITHUB_STEP_SUMMARY
+          fi
+      - name: Add Coverage as PR Comment
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: driver-suite-coverage
+          recreate: true
+          path: coverage/rom.coverage.txt

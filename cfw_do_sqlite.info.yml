@@ -1,0 +1,7 @@
+name: 'Drupflare ROM'
+type: module
+description: 'Drupal database driver for ctx.storage.sql, running inside a Cloudflare Durable Object.'
+package: 'Cloudflare Workers'
+core_version_requirement: ^11.2
+dependencies:
+  - drupal:sqlite
