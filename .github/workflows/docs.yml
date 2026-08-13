@@ -1,0 +1,38 @@
+name: Publish Documentation
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 'latest'
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: json, mbstring
+          coverage: none
+      - name: Install Composer Dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Build Documentation
+        run: bun run docs
+      - name: Deploy Documentation
+        run: bash phpdoc.sh "${GITHUB_SHA::7}"
