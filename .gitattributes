@@ -12,6 +12,10 @@
 /.github/** export-ignore
 /.husky export-ignore
 /.husky/** export-ignore
+/.phpdoc export-ignore
+/.phpdoc/** export-ignore
+/docs export-ignore
+/docs/** export-ignore
 /.vscode export-ignore
 /.vscode/** export-ignore
 /tests export-ignore
@@ -26,10 +30,11 @@
 /codecov.yml export-ignore
 /package.json export-ignore
 /phpcs.xml.dist export-ignore
+/phpdoc.sh export-ignore
+/phpdoc-favicon.sh export-ignore
 /phpstan.neon export-ignore
 /renovate.json export-ignore
 /CLAUDE.md export-ignore
-/PUBLISHING.md export-ignore
 
 # static-analysis stubs; loading them at runtime is a Cannot-redeclare fatal
 stubs/ export-ignore
