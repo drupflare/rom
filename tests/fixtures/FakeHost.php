@@ -145,6 +145,24 @@ final class FakeHost
 	public int $txnCalls = 0;
 
 	/**
+	 * How many of those entries were rolled back rather than committed.
+	 *
+	 * The HOST's own view of the same thing Connection::speculativeCount() reports. Two
+	 * independent instruments, so the suite can assert them against each other rather than
+	 * asserting the driver against itself.
+	 *
+	 * @var int
+	 */
+	public int $speculativeCalls = 0;
+
+	/**
+	 * How many statements were executed inside rolled-back transactions.
+	 *
+	 * @var int
+	 */
+	public int $replayedStatements = 0;
+
+	/**
 	 * Forces the next statement matching this needle to fail.
 	 *
 	 * @var string|null
@@ -208,6 +226,10 @@ final class FakeHost
 			$this->txnCalls++;
 			$request = pw_decode(json_decode($json, true));
 			$commit = (bool) ($request['commit'] ?? false);
+			if (!$commit) {
+				$this->speculativeCalls++;
+				$this->replayedStatements += count($request['statements'] ?? []);
+			}
 			$results = [];
 			$readResult = null;
 			$this->pdo->beginTransaction();

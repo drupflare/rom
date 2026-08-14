@@ -26,6 +26,8 @@ use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Upsert;
 use Drupal\Core\Database\IntegrityConstraintViolationException;
 use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\CfwSqlClient;
 use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection;
+use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\HostBridgeException;
+use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Schema;
 use Drupal\sqlite\Driver\Database\sqlite\Connection as CoreSqliteConnection;
 use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\SqlAnalyzer;
 use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\UncommittedStateException;
@@ -1066,6 +1068,618 @@ try {
 }
 ok('a marked placeholder that is not bound refuses', $markerRefused);
 
-echo "\nhost calls: {$host->execCalls} single, {$host->txnCalls} transactional\n";
+// #region the cost counters, which the Cost table is built on
+//
+// WHY THESE EXIST AS ASSERTIONS AND NOT AS AN INSTRUMENTED RUN. The three figures in README's
+// Cost table -- transactions opened, of which speculative, statements executed inside replays --
+// came from an ad-hoc instrumented build and could not be reproduced from the shipping class.
+// A replay cache is the next planned change to `readThroughReplay()`, and a cache with no
+// counter is a change you cannot measure: statementCount() alone CANNOT see it, because a
+// replay is one bridge crossing however many statements the host runs inside it.
+//
+// Everything below is a DELTA around a controlled block, so it does not depend on anything
+// earlier in this file and cannot break when a test is inserted above it.
+//
+// Each driver counter is asserted against FakeHost's own count of the same thing. Two
+// independent instruments agreeing is the proof; a counter asserted against itself is circular.
+echo "\nCost counters\n";
+
+// its OWN tables. `t` and `other` are recreated with different columns several times above this
+// point, so borrowing them is how a self-contained region stops being self-contained
+$connection->query('DROP TABLE IF EXISTS {cost}');
+$connection->query('DROP TABLE IF EXISTS {costclean}');
+$connection->query('CREATE TABLE {cost} (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)');
+$connection->query('CREATE TABLE {costclean} (id INTEGER PRIMARY KEY, v TEXT)');
+$connection
+	->insert('costclean')
+	->fields(['id' => 1, 'v' => 'committed'])
+	->execute();
+
+$before = [
+	'statements' => $connection->statementCount(),
+	'transactions' => $connection->transactionCount(),
+	'speculative' => $connection->speculativeCount(),
+	'replayed' => $connection->replayedStatementCount(),
+	'hostTxn' => $host->txnCalls,
+	'hostSpeculative' => $host->speculativeCalls,
+	'hostReplayed' => $host->replayedStatements,
+];
+
+// one write, then one dirty read of the table it wrote, then commit. That is exactly one
+// speculative replay of a 1-statement buffer, plus one committing transaction
+$transaction = $connection->startTransaction();
+$connection
+	->insert('cost')
+	->fields(['v' => 'counter-one'])
+	->execute();
+$connection->query("SELECT v FROM {cost} WHERE v = 'counter-one'")->fetchField();
+$transaction->commitOrRelease();
+unset($transaction);
+
+$afterOne = [
+	'transactions' => $connection->transactionCount() - $before['transactions'],
+	'speculative' => $connection->speculativeCount() - $before['speculative'],
+	'replayed' => $connection->replayedStatementCount() - $before['replayed'],
+	'statements' => $connection->statementCount() - $before['statements'],
+];
+
+ok(
+	'transactionCount() agrees with the host bridge it went through',
+	$afterOne['transactions'] === $host->txnCalls - $before['hostTxn'],
+	sprintf('%d driver, %d host', $afterOne['transactions'], $host->txnCalls - $before['hostTxn']),
+);
+ok(
+	'speculativeCount() agrees with the host on which were rolled back',
+	$afterOne['speculative'] === $host->speculativeCalls - $before['hostSpeculative'],
+	sprintf(
+		'%d driver, %d host',
+		$afterOne['speculative'],
+		$host->speculativeCalls - $before['hostSpeculative'],
+	),
+);
+ok(
+	'replayedStatementCount() agrees with what the host executed inside rollbacks',
+	$afterOne['replayed'] === $host->replayedStatements - $before['hostReplayed'],
+	sprintf(
+		'%d driver, %d host',
+		$afterOne['replayed'],
+		$host->replayedStatements - $before['hostReplayed'],
+	),
+);
+// MEASURED, not predicted, and the first draft of these assertions guessed 1 and was wrong.
+// One write plus one dirty read costs TWO speculative transactions, because Insert::execute()
+// asks for lastInsertId() and a buffered insert has no rowid yet -- so the id is resolved by its
+// own replay, before any read happens. That is the finding these counters were added to expose.
+ok(
+	'a write, a dirty read and a commit is 3 host transactions',
+	$afterOne['transactions'] === 3,
+	(string) $afterOne['transactions'],
+);
+ok(
+	'two of them are speculative: one for the buffered insert id, one for the read',
+	$afterOne['speculative'] === 2,
+	(string) $afterOne['speculative'],
+);
+ok(
+	'they replay 2 statements between them',
+	$afterOne['replayed'] === 2,
+	(string) $afterOne['replayed'],
+);
+ok(
+	'speculativeCount() never exceeds transactionCount()',
+	$afterOne['speculative'] <= $afterOne['transactions'],
+	sprintf('%d of %d', $afterOne['speculative'], $afterOne['transactions']),
+);
+
+// #region the O(W*R) term, made visible
+//
+// THIS IS THE ASSERTION THE COUNTERS EXIST FOR. `readThroughReplay()` re-sends
+// TransactionBuffer::statements() IN FULL for every dirty read, so N writes each followed by a
+// read replay 1 + 2 + ... + N = N(N+1)/2 statements. At N=3 that is 6, from 3 writes.
+//
+// statementCount() rises by 4 over the same block -- three replays plus the commit, one bridge
+// crossing each -- so the quadratic term is invisible to it. That gap IS the finding, and it is
+// why these are separate numbers rather than one.
+$midpoint = [
+	'replayed' => $connection->replayedStatementCount(),
+	'statements' => $connection->statementCount(),
+	'speculative' => $connection->speculativeCount(),
+	'hostReplayed' => $host->replayedStatements,
+];
+
+$transaction = $connection->startTransaction();
+for ($i = 1; $i <= 3; $i++) {
+	$connection
+		->insert('cost')
+		->fields(['v' => "wr-$i"])
+		->execute();
+	$connection->query("SELECT v FROM {cost} WHERE v = 'wr-$i'")->fetchField();
+}
+$transaction->commitOrRelease();
+unset($transaction);
+
+$grewReplayed = $connection->replayedStatementCount() - $midpoint['replayed'];
+$grewStatements = $connection->statementCount() - $midpoint['statements'];
+$grewSpeculative = $connection->speculativeCount() - $midpoint['speculative'];
+
+ok(
+	'three write-then-read pairs make SIX speculative replays, two per pair',
+	$grewSpeculative === 6,
+	(string) $grewSpeculative,
+);
+ok(
+	'they re-send 12 statements, which is N(N+1) rather than N(N+1)/2',
+	$grewReplayed === 12,
+	(string) $grewReplayed,
+);
+ok(
+	'statementCount() cannot see that, rising by 7 over the same block',
+	$grewStatements === 7,
+	(string) $grewStatements,
+);
+// the control: if the two counters moved together, one of them would be redundant and a replay
+// cache could be "proved" to work by the wrong number
+ok(
+	'CONTROL: the replay counter and the statement counter disagree, so both are needed',
+	$grewReplayed !== $grewStatements,
+	sprintf('%d replayed, %d statements', $grewReplayed, $grewStatements),
+);
+ok(
+	'the host agrees on the replayed total for this block too',
+	$grewReplayed === $host->replayedStatements - $midpoint['hostReplayed'],
+	sprintf(
+		'%d driver, %d host',
+		$grewReplayed,
+		$host->replayedStatements - $midpoint['hostReplayed'],
+	),
+);
+// #endregion
+// a read of an untouched table must NOT open a speculative transaction, or every read inside a
+// transaction would pay for a replay and the counter would be measuring the wrong thing
+// isolated by DIFFERENCE, because an insert costs a speculative replay on its own: comparing
+// [insert] against [insert + read] is the only way to attribute the cost to the read
+$insertOnlyBefore = $connection->speculativeCount();
+$transaction = $connection->startTransaction();
+$connection
+	->insert('cost')
+	->fields(['v' => 'insert-only'])
+	->execute();
+$transaction->commitOrRelease();
+unset($transaction);
+$insertOnly = $connection->speculativeCount() - $insertOnlyBefore;
+
+$withCleanReadBefore = $connection->speculativeCount();
+$transaction = $connection->startTransaction();
+$connection
+	->insert('cost')
+	->fields(['v' => 'untouched-probe'])
+	->execute();
+$connection->query('SELECT v FROM {costclean} WHERE id = 1')->fetchField();
+$transaction->commitOrRelease();
+unset($transaction);
+$withCleanRead = $connection->speculativeCount() - $withCleanReadBefore;
+
+ok(
+	'a buffered insert costs one speculative replay by itself, for its id',
+	$insertOnly === 1,
+	(string) $insertOnly,
+);
+ok(
+	'a read of an UNTOUCHED table adds nothing on top of it',
+	$withCleanRead === $insertOnly,
+	sprintf('%d with the read, %d without', $withCleanRead, $insertOnly),
+);
+// the control: a read of the WRITTEN table does add one, so the assertion above is not vacuous
+$dirtyReadBefore = $connection->speculativeCount();
+$transaction = $connection->startTransaction();
+$connection
+	->insert('cost')
+	->fields(['v' => 'dirty-probe'])
+	->execute();
+$connection->query("SELECT v FROM {cost} WHERE v = 'dirty-probe'")->fetchField();
+$transaction->commitOrRelease();
+unset($transaction);
+$withDirtyRead = $connection->speculativeCount() - $dirtyReadBefore;
+ok(
+	'CONTROL: a read of the written table DOES add one, so the check above has teeth',
+	$withDirtyRead === $insertOnly + 1,
+	sprintf('%d with a dirty read, %d without', $withDirtyRead, $insertOnly),
+);
+// #endregion
+// #region the replay cache
+//
+// WHAT IT CLOSES AND WHAT IT DOES NOT, because the second half is the part that is easy to
+// overclaim. A replay always starts from the same committed state and runs buffer[0..k] in
+// order, so the result of statement i depends on the buffer's first i+1 entries and nothing
+// else -- and those never change while they are buffered. So an answer learned once is still
+// true later, and every replay hands back one result per statement it ran.
+//
+// That removes REPEATED resolutions. It does NOT remove the first resolution of a newly
+// buffered statement, because the newest index is the one no earlier replay covered, and it
+// does not remove a dirty read, which has to be evaluated inside a transaction with the buffer
+// applied. The assertions below say which is which rather than quoting one number.
+echo "\nReplay cache\n";
+
+[$cacheHost, $cacheConnection] = connect();
+$cacheConnection->query('CREATE TABLE {cache} (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)');
+$cacheConnection->query('CREATE TABLE {cacheother} (id INTEGER PRIMARY KEY, v TEXT)');
+$cacheConnection
+	->insert('cacheother')
+	->fields(['id' => 1, 'v' => 'committed'])
+	->execute();
+
+$cacheTransaction = $cacheConnection->startTransaction();
+$cacheConnection
+	->insert('cache')
+	->fields(['v' => 'first'])
+	->execute();
+
+// Insert::execute() already resolved this id once; asking again must not open a second
+// host transaction
+$repeatBefore = [
+	'speculative' => $cacheConnection->speculativeCount(),
+	'replayed' => $cacheConnection->replayedStatementCount(),
+	'hostSpeculative' => $cacheHost->speculativeCalls,
+	'hostReplayed' => $cacheHost->replayedStatements,
+];
+$repeatId = $cacheConnection->lastInsertId();
+ok(
+	'a repeated lastInsertId() opens no host transaction',
+	$cacheConnection->speculativeCount() === $repeatBefore['speculative'],
+	sprintf(
+		'%d before, %d after',
+		$repeatBefore['speculative'],
+		$cacheConnection->speculativeCount(),
+	),
+);
+ok(
+	'and the host agrees it was never entered',
+	$cacheHost->speculativeCalls === $repeatBefore['hostSpeculative'],
+	sprintf('%d before, %d after', $repeatBefore['hostSpeculative'], $cacheHost->speculativeCalls),
+);
+ok(
+	'so it re-sends no statements either',
+	$cacheHost->replayedStatements === $repeatBefore['hostReplayed'],
+	sprintf('%d before, %d after', $repeatBefore['hostReplayed'], $cacheHost->replayedStatements),
+);
+ok(
+	'the cached id is the id the replay reported',
+	$repeatId !== '0' && ctype_digit($repeatId),
+	var_export($repeatId, true),
+);
+
+// CONTROL: the FIRST resolution of a newly buffered insert still costs one, so the three
+// assertions above are about the cache and not about lastInsertId() being free
+$freshBefore = $cacheConnection->speculativeCount();
+$cacheConnection
+	->insert('cache')
+	->fields(['v' => 'second'])
+	->execute();
+ok(
+	'CONTROL: a NEWLY buffered insert still costs one speculative replay',
+	$cacheConnection->speculativeCount() === $freshBefore + 1,
+	sprintf('%d before, %d after', $freshBefore, $cacheConnection->speculativeCount()),
+);
+$cacheTransaction->rollBack();
+unset($cacheTransaction);
+
+// the case worth the most: a dirty read replays the WHOLE buffer, so it answers every
+// outstanding row count as a side effect of work already being paid for. Statement::rowCount()
+// is deferred by design, which is what makes this reachable through the public API rather than
+// only by calling resolveBufferedRowCount() directly
+$cacheConnection
+	->insert('cache')
+	->fields(['v' => 'row-a'])
+	->execute();
+$cacheConnection
+	->insert('cache')
+	->fields(['v' => 'row-b'])
+	->execute();
+
+$cacheTransaction = $cacheConnection->startTransaction();
+$deferred = $cacheConnection->prepareStatement(
+	'UPDATE {cache} SET [v] = :v WHERE [v] LIKE :like',
+	[],
+	true,
+);
+$deferred->execute([':v' => 'row-updated', ':like' => 'row-%']);
+$cacheConnection->query("SELECT [v] FROM {cache} WHERE [v] = 'row-updated'")->fetchField();
+
+$deferredBefore = [
+	'speculative' => $cacheConnection->speculativeCount(),
+	'hostSpeculative' => $cacheHost->speculativeCalls,
+];
+$deferredRows = $deferred->rowCount();
+ok(
+	'a deferred rowCount() after a dirty read is free',
+	$cacheConnection->speculativeCount() === $deferredBefore['speculative'],
+	sprintf(
+		'%d before, %d after',
+		$deferredBefore['speculative'],
+		$cacheConnection->speculativeCount(),
+	),
+);
+ok(
+	'and the host was not entered for it',
+	$cacheHost->speculativeCalls === $deferredBefore['hostSpeculative'],
+	sprintf(
+		'%d before, %d after',
+		$deferredBefore['hostSpeculative'],
+		$cacheHost->speculativeCalls,
+	),
+);
+ok(
+	'the free answer is the right answer: 2 rows would change',
+	$deferredRows === 2,
+	(string) $deferredRows,
+);
+$cacheTransaction->rollBack();
+unset($cacheTransaction);
+
+// CONTROL for the same shape: with no dirty read to populate it, the deferred rowCount pays
+$cacheTransaction = $cacheConnection->startTransaction();
+$uncached = $cacheConnection->prepareStatement(
+	'UPDATE {cache} SET [v] = :v WHERE [v] LIKE :like',
+	[],
+	true,
+);
+$uncached->execute([':v' => 'row-updated', ':like' => 'row-%']);
+$uncachedBefore = $cacheConnection->speculativeCount();
+$uncachedRows = $uncached->rowCount();
+ok(
+	'CONTROL: without a dirty read first, the same rowCount() costs one replay',
+	$cacheConnection->speculativeCount() === $uncachedBefore + 1,
+	sprintf('%d before, %d after', $uncachedBefore, $cacheConnection->speculativeCount()),
+);
+ok('CONTROL: and reports the same 2 rows', $uncachedRows === 2, (string) $uncachedRows);
+$cacheTransaction->rollBack();
+unset($cacheTransaction);
+
+// A SAVEPOINT ROLLBACK IS THE ONE WAY THE BUFFER SHRINKS, so it is the one way a cached answer
+// can go stale: a fresh statement written at a discarded index would otherwise inherit the
+// discarded one's row count. The two updates below change a different number of rows on
+// purpose, so a stale answer is visible rather than merely possible.
+$cacheConnection
+	->insert('cache')
+	->fields(['v' => 'sp-1'])
+	->execute();
+$cacheConnection
+	->insert('cache')
+	->fields(['v' => 'sp-2'])
+	->execute();
+
+$cacheTransaction = $cacheConnection->startTransaction();
+$savepoint = $cacheConnection->startTransaction();
+$wide = $cacheConnection->prepareStatement(
+	'UPDATE {cache} SET [v] = :v WHERE [v] LIKE :like',
+	[],
+	true,
+);
+$wide->execute([':v' => 'sp-wide', ':like' => 'sp-%']);
+ok(
+	'the discarded write would have changed 2 rows',
+	$wide->rowCount() === 2,
+	(string) $wide->rowCount(),
+);
+$savepoint->rollBack();
+unset($savepoint);
+
+$narrow = $cacheConnection->prepareStatement(
+	'UPDATE {cache} SET [v] = :v WHERE [v] = :match',
+	[],
+	true,
+);
+$narrow->execute([':v' => 'sp-narrow', ':match' => 'sp-1']);
+ok(
+	'a statement written at the discarded index does NOT inherit its row count',
+	$narrow->rowCount() === 1,
+	(string) $narrow->rowCount(),
+);
+$cacheTransaction->rollBack();
+unset($cacheTransaction);
+// #endregion
+// #region a non-empty table prefix
+//
+// The core sqlite driver implements a prefix with ATTACH DATABASE, which has no analogue on
+// ctx.storage.sql: one Durable Object is one database and there is nothing to attach. The base
+// Connection's own mechanism does have one -- setPrefix() folds the prefix into the identifier
+// -- so that is what this driver uses, reached by calling the grandparent constructor.
+//
+// The point of these assertions is ISOLATION: two connections over the SAME host must not see
+// each other's tables. Both connections below share one FakeHost on purpose; a fresh host per
+// connection would make the isolation trivially true and prove nothing.
+echo "\nTable prefix\n";
+
+$prefixHost = new FakeHost();
+$prefixed = new Connection(new CfwSqlClient($prefixHost->execBridge(), $prefixHost->txnBridge()), [
+	'prefix' => 'site1_',
+	'database' => 'do',
+]);
+$plain = new Connection(new CfwSqlClient($prefixHost->execBridge(), $prefixHost->txnBridge()), [
+	'prefix' => '',
+	'database' => 'do',
+]);
+
+ok('getPrefix() reports the configured prefix', $prefixed->getPrefix() === 'site1_');
+ok(
+	'a curly-brace placeholder resolves to the mangled identifier',
+	$prefixed->prefixTables('SELECT * FROM {node}') === 'SELECT * FROM "site1_node"',
+	$prefixed->prefixTables('SELECT * FROM {node}'),
+);
+ok(
+	'and to the bare identifier without a prefix',
+	$plain->prefixTables('SELECT * FROM {node}') === 'SELECT * FROM "node"',
+	$plain->prefixTables('SELECT * FROM {node}'),
+);
+ok(
+	'getFullQualifiedTableName() carries the prefix and no database name',
+	$prefixed->getFullQualifiedTableName('node') === 'site1_node',
+	$prefixed->getFullQualifiedTableName('node'),
+);
+
+$prefixed->schema()->createTable('iso', [
+	'fields' => [
+		'id' => ['type' => 'int', 'not null' => true],
+		'v' => ['type' => 'varchar', 'length' => 32, 'not null' => true],
+	],
+	'primary key' => ['id'],
+	'indexes' => ['byv' => ['v']],
+]);
+$plain->schema()->createTable('iso', [
+	'fields' => [
+		'id' => ['type' => 'int', 'not null' => true],
+		'v' => ['type' => 'varchar', 'length' => 32, 'not null' => true],
+	],
+	'primary key' => ['id'],
+]);
+
+$rawNames = [];
+foreach ($prefixHost->pdo->query("SELECT name FROM sqlite_master WHERE type = 'table'") as $row) {
+	$rawNames[] = $row['name'];
+}
+ok(
+	'the prefixed CREATE TABLE lands under the mangled name',
+	in_array('site1_iso', $rawNames, true),
+	implode(', ', $rawNames),
+);
+ok(
+	'the unprefixed one lands beside it, not on top of it',
+	in_array('iso', $rawNames, true),
+	implode(', ', $rawNames),
+);
+
+$prefixed
+	->insert('iso')
+	->fields(['id' => 1, 'v' => 'prefixed-row'])
+	->execute();
+$plain
+	->insert('iso')
+	->fields(['id' => 1, 'v' => 'plain-row'])
+	->execute();
+ok(
+	'the prefixed connection reads its own row',
+	$prefixed->query('SELECT [v] FROM {iso} WHERE [id] = 1')->fetchField() === 'prefixed-row',
+);
+ok(
+	'the unprefixed connection reads its own row',
+	$plain->query('SELECT [v] FROM {iso} WHERE [id] = 1')->fetchField() === 'plain-row',
+);
+
+$prefixed->schema()->createTable('onlyhere', [
+	'fields' => ['id' => ['type' => 'int', 'not null' => true]],
+	'primary key' => ['id'],
+]);
+ok('tableExists() sees its own table', $prefixed->schema()->tableExists('onlyhere'));
+ok('and the other connection does not see it at all', !$plain->schema()->tableExists('onlyhere'));
+ok('indexExists() finds the prefixed index', $prefixed->schema()->indexExists('iso', 'byv'));
+ok('and the unprefixed connection has no such index', !$plain->schema()->indexExists('iso', 'byv'));
+
+// findTables() is the ONE inherited method that had to be replaced: the core sqlite version
+// matches the expression against the bare sqlite_master name, because there a prefixed table
+// lives in its own ATTACHed schema. Here the name carries the prefix, so inheriting it returns
+// nothing at all.
+$foundPrefixed = $prefixed->schema()->findTables('%');
+ok(
+	'findTables() returns UNPREFIXED names',
+	isset($foundPrefixed['iso'], $foundPrefixed['onlyhere']),
+	implode(', ', array_keys($foundPrefixed)),
+);
+ok(
+	'findTables() does not leak the other connection tables',
+	!isset($foundPrefixed['site1_iso']),
+	implode(', ', array_keys($foundPrefixed)),
+);
+$foundPlain = $plain->schema()->findTables('%');
+ok(
+	'the unprefixed connection sees only its own',
+	isset($foundPlain['iso']) && !isset($foundPlain['onlyhere']),
+	implode(', ', array_keys($foundPlain)),
+);
+ok(
+	'findTables() honours the expression as well as the prefix',
+	array_keys($prefixed->schema()->findTables('only%')) === ['onlyhere'],
+	implode(', ', array_keys($prefixed->schema()->findTables('only%'))),
+);
+
+$prefixed->schema()->renameTable('onlyhere', 'renamed');
+ok('renameTable() keeps the table prefixed', $prefixed->schema()->tableExists('renamed'));
+ok('and the old name is gone', !$prefixed->schema()->tableExists('onlyhere'));
+ok('the rename did not create an unprefixed table', !$plain->schema()->tableExists('renamed'));
+$prefixed->schema()->dropTable('renamed');
+ok('dropTable() removes the prefixed table', !$prefixed->schema()->tableExists('renamed'));
+ok('and leaves the other connection alone', $plain->schema()->tableExists('iso'));
+
+// the transaction machinery has to keep working under a prefix, because SqlAnalyzer sees the
+// MANGLED names and the dirty-table set is keyed on whatever it sees
+$prefixTransaction = $prefixed->startTransaction();
+$prefixed
+	->insert('iso')
+	->fields(['id' => 2, 'v' => 'buffered'])
+	->execute();
+ok(
+	'a dirty read under a prefix still sees the buffered write',
+	$prefixed->query('SELECT [v] FROM {iso} WHERE [id] = 2')->fetchField() === 'buffered',
+);
+ok(
+	'and the other connection cannot see it, because nothing was committed',
+	$plain->query('SELECT COUNT(*) FROM {iso} WHERE [id] = 2')->fetchField() === '0',
+);
+$prefixTransaction->rollBack();
+unset($prefixTransaction);
+
+// A PERIOD IS THE ONE PREFIX CHARACTER THAT CANNOT WORK. Core allows it and every other driver
+// reads it as a schema selector; there is no second schema here to select.
+ok(
+	'PREFIX_PATTERN accepts what can be mangled',
+	Connection::isSupportedPrefix('') &&
+		Connection::isSupportedPrefix('site1_') &&
+		Connection::isSupportedPrefix('Aa0_'),
+);
+$periodRefused = false;
+$periodMessage = '';
+try {
+	new Connection(new CfwSqlClient($prefixHost->execBridge(), $prefixHost->txnBridge()), [
+		'prefix' => 'other.',
+		'database' => 'do',
+	]);
+} catch (HostBridgeException $e) {
+	$periodRefused = true;
+	$periodMessage = $e->getMessage();
+}
+ok('a prefix containing a period is refused', $periodRefused, $periodMessage);
+ok(
+	'and the refusal names the reason rather than the symptom',
+	str_contains($periodMessage, 'selects a schema'),
+	$periodMessage,
+);
+
+// the prefix is part of the LIKE pattern findTables() sends, and the platform refuses any
+// pattern over 50 bytes -- so a long prefix can push a short expression over on its own
+$longPattern = false;
+$longPatternMessage = '';
+try {
+	$prefixed->schema()->findTables(str_repeat('a', 50) . '%');
+} catch (InvalidQueryException $e) {
+	$longPattern = true;
+	$longPatternMessage = $e->getMessage();
+}
+ok('findTables() refuses an over-length LIKE pattern', $longPattern, $longPatternMessage);
+ok(
+	'and the refusal says the prefix counts towards the length',
+	str_contains($longPatternMessage, 'The prefix is part of that length'),
+	$longPatternMessage,
+);
+
+// the schema needs THIS driver's connection: it reads the synthetic schema list, which the
+// base Connection does not have
+$wrongSchema = false;
+try {
+	new Schema(new stdClass());
+} catch (HostBridgeException $e) {
+	$wrongSchema = str_contains($e->getMessage(), 'stdClass');
+}
+ok('the schema refuses a connection that is not this driver', $wrongSchema);
+// #endregion
+echo "\nhost calls: {$host->execCalls} single, {$host->txnCalls} transactional ({$host->speculativeCalls} rolled back over {$host->replayedStatements} replayed statements)\n";
 echo "\n$pass passed, $fail failed\n";
 exit($fail === 0 ? 0 : 1);
