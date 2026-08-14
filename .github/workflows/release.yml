@@ -34,7 +34,6 @@ jobs:
       - name: Retrieve Latest Tag
         id: latest_tag
         run: |
-          # git describe exits 1 with no tags, which is every FIRST release; tolerate it
           echo "LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo '')" >> "$GITHUB_ENV"
       - name: Generate Changelog
         if: ${{ github.event.inputs.changelog == '' }}

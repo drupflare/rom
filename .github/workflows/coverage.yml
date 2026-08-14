@@ -72,6 +72,7 @@ jobs:
           name: coverage
           path: coverage/
           retention-days: 30
+          if-no-files-found: error
       - name: Coverage to Job Summary
         if: success() || failure()
         run: |
@@ -84,7 +85,7 @@ jobs:
             echo 'No report was produced; the run refused to measure.' >> $GITHUB_STEP_SUMMARY
           fi
       - name: Add Coverage as PR Comment
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork
         uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: driver-suite-coverage

@@ -15,7 +15,8 @@
  *   php tests/coverage.php [/path/to/drupal-root]
  *
  * Exits 2 without running anything when the Drupal root or the coverage driver is
- * missing, so a CI job cannot report a pass it did not measure.
+ * missing, and exits 2 after the suite when a report writer fails, so a CI job cannot
+ * report a pass it did not measure.
  */
 
 declare(strict_types=1);
@@ -23,6 +24,7 @@ declare(strict_types=1);
 use SebastianBergmann\CodeCoverage\CodeCoverage;
 use SebastianBergmann\CodeCoverage\Driver\Selector;
 use SebastianBergmann\CodeCoverage\Filter;
+use SebastianBergmann\CodeCoverage\Node\Directory;
 use SebastianBergmann\CodeCoverage\Report\Clover;
 use SebastianBergmann\CodeCoverage\Report\Text;
 use SebastianBergmann\CodeCoverage\Report\Thresholds;
@@ -91,12 +93,33 @@ use SebastianBergmann\CodeCoverage\Report\Thresholds;
 	// place the reports can be written from without editing the suite
 	register_shutdown_function(static function () use ($coverage, $out): void {
 		$coverage->stop();
+
+		// php-code-coverage 14 moved the writers off the collector and onto the Directory
+		// node it builds; 11 and 12 still take the collector, so ask the signature rather
+		// than the version. getReport() walks the whole tree, so it is built at most once
+		$node = null;
+		$reportFor = static function (object $writer) use (
+			$coverage,
+			&$node,
+		): CodeCoverage|Directory {
+			$first = (new ReflectionMethod($writer, 'process'))->getParameters()[0] ?? null;
+			$type = $first?->getType();
+			if ($type instanceof ReflectionNamedType && $type->getName() === Directory::class) {
+				return $node ??= $coverage->getReport();
+			}
+			return $coverage;
+		};
+
 		try {
-			(new Clover())->process($coverage, $out . '/rom.clover.xml');
-			$summary = (new Text(Thresholds::default(), false, true))->process($coverage, false);
-		} catch (\Throwable $e) {
+			$clover = new Clover();
+			$text = new Text(Thresholds::default(), false, true);
+			$clover->process($reportFor($clover), $out . '/rom.clover.xml');
+			$summary = $text->process($reportFor($text), false);
+		} catch (Throwable $e) {
+			// the docblock above promises a job cannot report a pass it did not measure,
+			// and a writer that threw measured nothing
 			fwrite(STDERR, "\nCoverage report failed: " . $e->getMessage() . "\n");
-			return;
+			exit(2);
 		}
 		file_put_contents($out . '/rom.coverage.txt', $summary);
 		echo "\n" . $summary;
