@@ -8,29 +8,24 @@
 [![Packagist](https://img.shields.io/packagist/v/drupflare/rom)](https://packagist.org/packages/drupflare/rom)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Drupal 11 talking to `ctx.storage.sql` — the SQLite database inside a Cloudflare
-Durable Object.** Drupal's query builders, schema handling and condition compiler are
-used unchanged; what is replaced is everything that assumed PDO and a file on disk.
+rom connects Drupal 11 to `ctx.storage.sql`, the SQLite database inside a Cloudflare Durable
+Object. Drupal's query builders, schema handling and condition compiler are used unchanged; the
+driver replaces everything that assumed PDO and a file on disk.
 
-`composer require drupflare/rom` installs it; the module machine name and the driver
-directory are both `cfw_do_sqlite`, which is the name `settings.php` refers to. Those two
-names differ on purpose: the package is named for the repository, the driver for the value
-Drupal loads it by.
+The package is `drupflare/rom`; the driver directory and module machine name are both
+`cfw_do_sqlite`, which is the value `settings.php` refers to.
 
 > [!IMPORTANT]
-> **Drupal 11.2 or newer.** The statement class extends `Drupal\Core\Database\Statement\StatementBase`
-> and returns a `PrefetchedResult` with a `FetchAs` fetch mode. All three of those classes first
-> exist in **11.2.0**.
+> **Requires Drupal 11.2 or newer.** The statement class extends `StatementBase` and returns a
+> `PrefetchedResult` with a `FetchAs` fetch mode; all three first exist in 11.2.0.
 
 > [!CAUTION]
-> **This is not a general-purpose SQLite driver.** It targets one engine, reached through
-> one bridge: `ctx.storage.sql` inside a Durable Object, called through host functions the
-> Worker installs. There is no PDO, no file path, no connection string and no second
-> database to attach. On a normal host it cannot connect at all — `Install\Tasks` reports
-> the driver uninstallable when the bridge is absent. For SQLite on a filesystem, use
-> Drupal core's own `sqlite` driver, which this one extends. The
-> [platform limits](#-platform-limits-you-cannot-configure-away) below are not tunables;
-> they are properties of the engine this driver is for.
+> **This is not a general-purpose SQLite driver.** It targets one engine reached through one
+> bridge: `ctx.storage.sql`, called through host functions the Worker installs. There is no PDO,
+> no file path, no connection string and no second database to attach. On a normal host it cannot
+> connect — `Install\Tasks` reports the driver uninstallable when the bridge is absent. For SQLite
+> on a filesystem, use Drupal core's `sqlite` driver, which this one extends.
+> [Platform Limits](#-platform-limits) are properties of the engine, not tunables.
 
 ---
 
@@ -40,44 +35,39 @@ Drupal loads it by.
 - [How It Works](#-how-it-works)
 - [The Host Contract](#-the-host-contract)
 - [Installation](#-installation)
-- [Working Across the Repositories Before Publication](#-working-across-the-repositories-before-publication)
-- [Platform Limits You Cannot Configure Away](#-platform-limits-you-cannot-configure-away)
+- [Table Prefixes](#-table-prefixes)
+- [Platform Limits](#-platform-limits)
 - [What the Design Does Not Cover](#-what-the-design-does-not-cover)
 - [SQL Function and Collation Audit](#-sql-function-and-collation-audit)
 - [Cost](#-cost)
-- [Files](#-files)
-- [Formatting and Coding Standards](#-formatting-and-coding-standards)
-- [Testing](#-testing)
-- [CI](#-ci)
-- [What Remains](#-what-remains)
 - [Related Repositories](#-related-repositories)
+- [Contributing](#-contributing)
 - [License](#-license)
 
 ---
 
 ## 🎯 Why a New Driver
 
-A Durable Object's SQLite looks like the obvious home for a small Drupal site: it is
-strongly consistent, it lives in the same isolate as the code, and reads are synchronous
-so PHP's blocking database calls compose with it. Then you try Drupal's own SQLite driver
-and it cannot connect, for three reasons that are not configuration:
+A Durable Object's SQLite suits a small Drupal site: it is strongly consistent, it lives in the
+same isolate as the code, and reads are synchronous, so PHP's blocking database calls compose with
+it. Drupal's own SQLite driver still cannot connect to it, for three reasons that are not
+configuration:
 
 1. **There is no PDO.** The core sqlite `Connection` types its client as `\PDO` and
    attaches one database file per prefix. There is no driver to find and no file to
    attach.
 2. **There are no user-defined functions or collations.** The core driver registers
    `GREATEST`, `LEAST`, `RAND`, `IF`, `LENGTH`, `MD5`, `SUBSTRING_INDEX`, `REGEXP` and a
-   `NOCASE_UTF8` collation through PDO. Without collations, **every `CREATE TABLE` core
-   emits fails** — measured, `no such collation sequence: NOCASE_UTF8:
-SQLITE_ERROR_MISSING_COLLSEQ`.
+   `NOCASE_UTF8` collation through PDO. Without collations every `CREATE TABLE` core emits fails
+   with `no such collation sequence: NOCASE_UTF8: SQLITE_ERROR_MISSING_COLLSEQ`.
 3. **`BEGIN` is refused outright**, with the runtime telling you to use
    `state.storage.transactionSync()` instead. `SAVEPOINT`, `COMMIT` and `ROLLBACK` are the
    same family, so Drupal's begin-commit API has nothing to map onto.
 
-Point 3 is the interesting one, because `transactionSync(cb)` is callback-scoped and
-driven from JavaScript while Drupal's API is begin-then-commit. Those do not compose, and
-without a suspension mechanism PHP cannot call into a callback-scoped API and resume. So
-the transaction scope has to be **inverted or deferred**. This driver defers.
+The third has no workaround. `transactionSync(cb)` is callback-scoped and driven from JavaScript,
+while Drupal's API is begin-then-commit; without a suspension mechanism PHP cannot call into a
+callback-scoped API and resume. The transaction scope therefore has to be inverted or deferred.
+rom defers.
 
 ---
 
@@ -98,11 +88,10 @@ rollBack()           -> discard the buffer; this cannot fail
 commit()             -> replay the buffer in one transactionSync
 ```
 
-A read is "clean" when none of the tables it references has a buffered write.
-`SqlAnalyzer` answers that, and it **over-approximates in every uncertain direction**: an
-unclassifiable statement, an unpinnable write target or a `RENAME` marks everything dirty.
-The cost of over-approximating is a read resolved the expensive way. The cost of
-under-approximating is data that is wrong without saying so.
+A read is clean when none of the tables it references has a buffered write. `SqlAnalyzer` decides
+this and over-approximates in every uncertain direction: an unclassifiable statement, an unpinnable
+write target or a `RENAME` marks everything dirty. Over-approximating costs a read resolved the
+expensive way; under-approximating returns wrong data silently.
 
 DDL additionally dirties a pseudo-table `sqlite_master`, so `tableExists()`,
 `findTables()` and `PRAGMA table_info()` collide with a buffered `CREATE`/`DROP` and get
@@ -110,29 +99,88 @@ resolved through the replay instead of reading stale schema. Tested: inside a tr
 `tableExists('late')` is TRUE for a table the host has never seen, and FALSE again after
 the rollback.
 
-**A read inside a transaction is the hard case, not the commit.** Committing is replaying
-a list. The trap is code that writes a row and reads it back before committing, and the
-driver answers those by replaying the buffer inside a transaction it then rolls back — and
-refuses rather than guessing when it cannot.
+Reads inside a transaction are the hard case, not commits. Committing is replaying a list. Code
+that writes a row and reads it back before committing is resolved by replaying the buffer inside a
+transaction that is then rolled back; where that is not possible, the driver refuses rather than
+guessing.
 
-### How it extends core without inheriting PDO
+Every speculative replay returns one result per statement it ran, not just the one asked about, and
+`TransactionBuffer` caches them. A replay always starts from the same committed state and runs
+`buffer[0..k]` in order, so the result of statement _i_ depends only on the buffer's first _i+1_
+entries, and those entries do not change while buffered. Rolling back to a savepoint truncates the
+buffer, so `rollbackTo()` drops the cached answers for the discarded tail; otherwise a fresh
+statement written at a discarded index would inherit the discarded one's row count.
+
+The cache removes repeated resolutions: a second `lastInsertId()` for the same buffered insert, and
+a deferred `Statement::rowCount()` for any write a later dirty read has already replayed past. A
+dirty read replays the whole buffer, so it resolves every outstanding id and row count as a side
+effect. It does not remove the first resolution of a newly buffered statement, and it does not
+remove a dirty read, which must be evaluated inside a transaction with the buffer applied. The
+`N(N+1)` figure in [Cost](#-cost) for alternating write-then-read pairs is unchanged.
+
+A buffered write reports success before it runs, so a statement SQLite would refuse sits in the
+buffer until a later replay trips over it. Left there it is fatal twice over: every subsequent
+replay re-runs it, and so does the commit, so the transaction can never succeed even after the
+reason for the refusal is gone.
+
+It's the exact shape of Drupal core's own lazy-table idiom — write, catch the failure, create the table,
+carry on; which `Core\Routing\MatcherDumper::dump()` runs **inside a transaction**. A stock `standard`
+install died there: `DELETE FROM router` was buffered instead of failing, so `ensureTableExists()` never
+fired, the `router` table was never created, and the buffered delete then poisoned every replay and the commit.
+
+`Connection::speculate()` restores the real semantics: on a real connection that statement
+would have failed where it was issued and left nothing behind, so the driver finds it,
+discards it, and raises its error once.
+
+The host reports one error for the whole replay and never says which statement raised it. The
+position is recovered by bisection: the shortest prefix that still fails. Three things bound the
+search.
+
+- A prefix an earlier replay already resolved is skipped. The committed state cannot change
+  while the buffer is open, so a replay of the same prefix is deterministic and a prefix
+  that has succeeded once cannot be the culprit.
+- Every probe is a speculative replay and is **counted as one** — the counters do not get to
+  hide the repair. Measured: four buffered writes with one bad third costs four host
+  transactions to place it, and the suite asserts that number.
+- When the trailing read is what SQLite refused, the buffer replays cleanly and **nothing is
+  discarded**. That control is asserted too; without it the repair would also pass on a
+  driver that threw a statement away whenever anything went wrong.
+
+The slot is marked rather than removed, so a buffer index already handed to a `Statement`
+still names the same statement, and a replay maps its results back by position. Attribution is
+the limit: the failure is delivered to whichever caller triggered the replay, which is the failing
+statement only when its own id or row count was requested. Anything other than a missing table — a
+constraint violation, for instance — surfaces at the replay or the commit rather than at
+`execute()`. Both are consequences of deferring writes.
+
+A suspension point cannot land inside a replay: the whole save is one synchronous `php._run()`,
+and the host brackets its bridge calls with `zend_wasm_slice_mask(1)`/`(0)` from `phasm`'s VM
+interrupt patch. This is a standing constraint on any future JSPI build — one that can suspend
+mid-`transactionSync()` would break the atomicity this driver depends on.
 
 The constructor calls the **grandparent** `Drupal\Core\Database\Connection::__construct()`
 directly, skipping the sqlite constructor's `\PDO` type and its per-prefix attach. That is
-legal PHP in object context and was verified before being relied on; with an empty prefix
-it is exactly what the sqlite constructor would have done. `__destruct()` is overridden the
-same way so the sqlite destructor never tries to `unlink()` a database file after a
-`DROP TABLE`.
+legal PHP in object context and was verified before being relied on. `__destruct()` is
+overridden the same way so the sqlite destructor never tries to `unlink()` a database file
+after a `DROP TABLE`.
 
-`getAttachedDatabases()` returns a synthetic `['main' => 'main']`, which is not cosmetic:
-it is what makes the inherited `Schema::findTables()` work unchanged while the real
-`$attachedDatabases` property stays empty, so the destructor's prune loop is never entered.
+The table prefix comes from the grandparent.
+`Drupal\Core\Database\Connection::setPrefix()` folds the prefix into the identifier, so
+`{node}` resolves to `"myprefix_node"` in the one database this Durable Object owns. The
+sqlite constructor would instead have ATTACHed a second database and emitted
+`"prefix"."table"`, which has no analogue here. See
+[Table Prefixes](#-table-prefixes).
+
+`getAttachedDatabases()` returns a synthetic `['main' => 'main']`. `Schema::findTables()` iterates
+it while the real `$attachedDatabases` property stays empty, so the destructor's prune loop is
+never entered.
 
 Everything else is inherited. `Select`, `Insert`, `Truncate`, the condition compiler, the
 type map and the table-rebuild dance all come from
 `Drupal\sqlite\Driver\Database\sqlite`, because the engine underneath genuinely is SQLite.
-Two exceptions: `Schema` overrides one method to substitute the collation, and `Upsert` is
-overridden because of the bound-parameter ceiling below.
+Two exceptions: `Schema` overrides one method to substitute the collation and one to fix
+`findTables()` under a prefix, and `Upsert` is overridden because of the bound-parameter
+ceiling below.
 
 ---
 
@@ -168,9 +216,8 @@ where `\PDO` stands.
 ```
 
 Everything runs inside one `ctx.storage.transactionSync()`. When `commit` is false the
-host runs the statements and then throws a private sentinel so the runtime rolls back —
-that is the measured rollback mechanism, used deliberately — and still returns `results`,
-which is what makes the speculative row count and insert id work. `read` is evaluated
+host runs the statements and then throws a private sentinel so the runtime rolls back, and still
+returns `results`. That is what makes the speculative row count and insert id work. `read` is evaluated
 after the statements, inside the same transaction, and is only meaningful with
 `commit: false`. Failure is `{"ok": false, "error": "<sqlite message>"}` with the whole
 transaction rolled back.
@@ -231,91 +278,56 @@ inside `Settings::initialize()` where `$app_root`, `$site_path` and `$class_load
 in scope.
 
 There are no credentials and no host. The Durable Object's identity **is** the address, so
-`database` is a label recorded for reference and routes nothing. A non-empty `prefix`
-throws at construction, because the core driver implements prefixes with
-`ATTACH DATABASE` and there is no second database to attach — one Durable Object per site
-is the intended shape. That also means Drupal's own test runner cannot use this driver.
+`database` is a label recorded for reference and routes nothing. `prefix` is honoured, with
+one character's worth of exception; see the next section.
 
 ---
 
-## 🔀 Working Across the Repositories Before Publication
+## 🔖 Table Prefixes
 
-Until the first Packagist release, and any time you want to edit the driver and the site
-together, point Composer at a local checkout. Composer's **path repository** does that, and
-it symlinks by default, so edits in the checkout are live in the site with no reinstall.
+`'prefix' => 'site1_'` works. `{node}` becomes `"site1_node"`, and two connections to the
+same Durable Object with different prefixes do not see each other's tables — asserted, over
+one shared host, because a fixture per connection would make isolation trivially true and
+prove nothing.
 
-Clone the repositories as siblings:
+**The mechanism is not core sqlite's.** That driver implements a prefix with
+`ATTACH DATABASE`: it attaches one file per prefix, appends a `.`, and emits
+`"prefix"."table"`. `ctx.storage.sql` is one database per Durable Object with no `ATTACH`
+and no files, so there is nothing to attach and no schema to name. What does have an
+analogue is the mechanism in the **base** `Connection`, which every non-sqlite driver
+already uses: `setPrefix()` folds the prefix into the identifier itself. This driver calls
+the grandparent constructor, so that is the implementation it gets — not as a workaround,
+but as the one of core's two prefix mechanisms that this engine can support.
 
-```txt
-drupflare/
-  rom/           this repo
-  drupflare/     mail, HTTP, images and logging over Workers bindings
-  php-workerd/   the PHP wasm build
-  worker/        the site that consumes all three
-```
+| Piece                                        | Under a prefix                                                              |
+| -------------------------------------------- | --------------------------------------------------------------------------- |
+| `{curly}` placeholders                       | inherited; `prefixTables()` already mangles                                 |
+| `Select` / `Insert` / `Update` / `Upsert`    | inherited; they only ever emit `{table}`                                    |
+| `Schema::createTable` / `renameTable` / drop | inherited; `getPrefixInfo()` puts the prefix on the front, which is correct |
+| index create / exists / drop                 | inherited; index names are already `table_key`, so they mangle with it      |
+| `getFullQualifiedTableName()`                | inherited from core sqlite, which returns `prefix . table`                  |
+| `Schema::findTables()`                       | **replaced.** See below                                                     |
 
-> [!NOTE]
-> This repository's default branch is `master`, so its untagged path-repository version is
-> `dev-master`. The measured table below was taken against the `drupflare/drupflare`
-> sibling while that one was on `main`; the quoted output is left verbatim rather than
-> edited, because the behaviour it demonstrates is the constraint syntax, not the branch
-> name.
+`findTables()` is overridden. The core sqlite version matches `$table_expression` against the bare
+name in `sqlite_master`, since a prefixed table there lives in its own attached schema. Here the
+name in `sqlite_master` is the prefixed name, so the inherited method returns an empty result under
+a non-empty prefix rather than an error. The override applies the prefix to the pattern and strips
+it from the results.
 
-Then, in the consuming project's `composer.json`:
+The `LIKE` narrows and PHP confirms the match, since an underscore in a prefix is a `LIKE` wildcard
+and can only over-select. The pattern is length-checked against `MAX_LIKE_PATTERN_BYTES`: the
+prefix counts towards the platform's 50-byte ceiling, so a long prefix can push a short expression
+over on its own.
 
-```json
-{
-	"repositories": [
-		{ "type": "path", "url": "../drupal-do", "options": { "symlink": true } },
-		{ "type": "path", "url": "../drupflare", "options": { "symlink": true } }
-	],
-	"require": {
-		"drupflare/rom": "*@dev",
-		"drupflare/drupflare": "*@dev"
-	}
-}
-```
-
-**The constraint is the part that catches people, so it is worth being exact.** A path
-repository takes its version from the checkout's git refs, so an untagged checkout is
-`dev-main` — and both of the obvious constraints are refused. Measured, on the sibling
-repository:
-
-| Constraint | Result against an untagged checkout                                        |
-| ---------- | -------------------------------------------------------------------------- |
-| `^1.0`     | `found drupflare/drupflare[dev-main] but it does not match the constraint` |
-| `*`        | `found ... [dev-main] but it does not match your minimum-stability`        |
-| `*@dev`    | resolves: `Locking drupflare/drupflare (dev-main <sha>)`                   |
-
-So use `*@dev` while the checkout is untagged (or set `"minimum-stability": "dev"`, which
-loosens every other package too and is the worse trade). **Tag the checkout `v1.0.0` and
-`^1.0` starts working immediately**, with no edit to the consumer — which is the reason
-[`PUBLISHING.md`](PUBLISHING.md) tags before it submits.
-
-`"options": { "symlink": true }` is Composer's default and means edits in the checkout are
-live in the site. Pass `"symlink": false` to get a copy instead, which is what
-`drupflare/worker` does: it packs the driver from its own `drupal/` tree rather than from
-`vendor/`, so a symlink would buy nothing and a copy makes the installed state explicit.
-
-To track the branch rather than the working tree, use a VCS repository instead — it clones
-from GitHub, so it needs a push rather than a save:
-
-```json
-{
-	"repositories": [{ "type": "vcs", "url": "https://github.com/drupflare/rom" }],
-	"require": { "drupflare/rom": "dev-master" }
-}
-```
-
-**After publication both blocks come out** and `composer require drupflare/rom:^1.0`
-is the whole story. The package name, the autoload map and the install path are identical
-in all three cases, so the `settings.php` snippet above never changes.
-
-See [`PUBLISHING.md`](PUBLISHING.md) for the ordered steps to that first release.
+A period in a prefix is refused at construction. Core validates a prefix as `[A-Za-z0-9_.]`,
+where the period is a schema selector: a database in MySQL, a schema in PostgreSQL, an attached
+file in core sqlite. None of those exist here.
+`Install\Tasks::validateDatabaseSettings()` rejects it at the install form as well, so the
+installer reports the problem instead of fataling.
 
 ---
 
-## 🧱 Platform Limits You Cannot Configure Away
+## 🧱 Platform Limits
 
 Properties of Durable Object SQLite, every one measured on deployed infrastructure rather
 than read from documentation. They belong in release notes, not in support tickets.
@@ -355,7 +367,9 @@ refuses over-length patterns on the **translated** form, which is what protects 
 "contains" filter. A plain `LIKE` with a bound pattern is invisible to the driver and
 fails in the engine. Note also that `likeToGlob()` triples an asterisk, so 20 asterisks
 become a 60-byte GLOB pattern and are refused — the refusal reports the translated length
-for exactly that reason.
+for exactly that reason. `Schema::findTables()` is the one place the driver builds a `LIKE`
+pattern itself, and it checks the same ceiling, because a table prefix is prepended to the
+caller's expression and counts towards those 50 bytes.
 
 **Wide-integer reads cannot be fixed at driver level.** `ctx.storage.sql` hands INTEGER
 columns back as JS doubles, so precision is gone before anything in PHP can see it; the
@@ -373,7 +387,7 @@ In descending order of how likely you are to hit it.
 1. **A read that joins buffered rows against committed ones is only correct through the
    replay.** With `cfwSqlTxn` present it is correct, because the join runs inside a real
    transaction with the writes applied. Without it, the read is refused. There is no third
-   behaviour, deliberately.
+   behaviour.
 2. **Cost is quadratic in the worst case.** Each dirty read replays the whole buffer, so a
    transaction with W writes and R dirty reads executes O(W\*R) statements inside the
    Durable Object. See [Cost](#-cost) for what that actually measured.
@@ -382,11 +396,15 @@ In descending order of how likely you are to hit it.
    commit replay. Drupal supplies timestamps from PHP rather than SQL, so the exposure is
    narrow — and a rowid from `lastInsertId()` matches the committed one only because the
    Durable Object gate serialises events so no other writer can advance the sequence in
-   between. If that gate is ever removed, this breaks.
+   between. If that gate is ever removed, this breaks. The replay cache _freezes_ the first
+   value a statement produced instead of letting a later replay produce a different one,
+   which makes the driver's own answers self-consistent; it does not make them match a
+   commit replay that rolls the dice again.
 4. **A savepoint is a buffer index, not a database savepoint.** Rolling back to one
    truncates the list, and releasing one releases every savepoint after it, matching
    SQLite. For the way Drupal uses savepoints — nested `Transaction` objects — the list is
-   the whole state.
+   the whole state. It is also the only way the buffer shrinks, and the only thing that
+   invalidates a cached replay result.
 5. **A failed commit leaves the Drupal transaction stack dirty.** The replay throws,
    `commitClientTransaction()` sets `CommitFailed` and rethrows so the real SQLite message
    survives, and the stack item is never voided, so its destructor throws
@@ -435,9 +453,8 @@ from grepping non-test `core/lib` and `core/modules` for the function inside SQL
 
 The rewrite is four names, applied only outside string literals, comments and quoted
 identifiers, using the same literal-aware scanner the table analysis uses.
-`SELECT 'GREATEST('` survives it, tested end to end. **Functions with no exact builtin are
-deliberately absent from the map**: mapping something onto a function that behaves
-differently is how you get quiet wrongness.
+`SELECT 'GREATEST('` survives it. Functions with no exact builtin are absent
+from the map; mapping one onto a function that behaves differently produces silent wrong answers.
 
 `LENGTH()` changes meaning. Core overrides it with PHP's `strlen()`, so it counts bytes;
 SQLite's builtin counts characters on TEXT. `CommentStorage` uses it on thread strings like
@@ -445,17 +462,17 @@ SQLite's builtin counts characters on TEXT. `CommentStorage` uses it on thread s
 multibyte text gets a different answer than on MySQL, and it is not fixable without user
 functions.
 
-`LIKE BINARY` works, and the "there is no seam" claim this design once made was wrong.
-`Condition::compile()` emits `field OPERATOR prefix placeholder postfix`, so a marker
-placed in the operator's `prefix` lands immediately before the placeholder and identifies
-which bound argument is the pattern. `Connection::translateLikeBinary()` rewrites that
-argument with `SqlAnalyzer::likeToGlob()` before anything else sees the statement and
-strips the marker; core's `ESCAPE '\'` postfix is dropped because builtin `GLOB` refuses a
-third argument. **9,000 differential cases agree with core's own
-`sqlFunctionLikeBinary()`**, with a control proving the untranslated form disagrees — so
-case-sensitive `STARTS_WITH` / `CONTAINS` / `ENDS_WITH` are available. Those 9,000 cases
-all used patterns of at most 5 characters, so nothing in the differential suite covers a
-long pattern; the 50-byte refusal is what protects those, not the differential agreement.
+`LIKE BINARY` is supported. `Condition::compile()` emits
+`field OPERATOR prefix placeholder postfix`, so a marker placed in the operator's `prefix` lands
+immediately before the placeholder and identifies which bound argument is the pattern.
+`Connection::translateLikeBinary()` rewrites that argument with `SqlAnalyzer::likeToGlob()` before
+anything else sees the statement and strips the marker. Core's `ESCAPE '\'` postfix is dropped,
+since builtin `GLOB` refuses a third argument.
+
+**9,000 differential cases agree with core's own `sqlFunctionLikeBinary()`**, with a control
+proving the untranslated form disagrees, so case-sensitive `STARTS_WITH` / `CONTAINS` /
+`ENDS_WITH` are available. Every case used a pattern of at most 5 characters, so long patterns are
+covered by the 50-byte refusal rather than by the differential suite.
 
 The engine floor is established by **feature probe**, not by asking, because
 `sqlite_version()` is refused. It reports **3.46.0**, proven by `unhex()` which landed in
@@ -468,10 +485,7 @@ so anything displaying it can say so.
 
 ## 📊 Cost
 
-Measured, not derived. Earlier versions of this design reasoned from a 0.0125 ms
-per-bridge-call figure and had never exercised the transaction machinery with a write.
-
-One **warm node save** through Drupal's entity API:
+One warm node save through Drupal's entity API:
 
 |                                                                  | value   |
 | ---------------------------------------------------------------- | ------- |
@@ -483,182 +497,62 @@ One **warm node save** through Drupal's entity API:
 
 The first save on a fresh kernel is 18 transactions / 137 replayed statements / 152 total.
 
-So **54 of 59 statement executions in a node save are replays**, and 9 of the 10
-transactions are the read-your-own-uncommitted-write path. The O(W\*R) term is real and
-dominant in statement count, but the buffers are small — 5.4 statements per transaction —
-so it has not become a cost problem. **The number to watch is statements-per-transaction,
-not transactions.**
+54 of 59 statement executions in a node save are replays, and 9 of the 10 transactions are the
+read-your-own-uncommitted-write path. The O(W\*R) term dominates statement count, but the buffers
+are small at 5.4 statements per transaction. Statements-per-transaction is the figure that predicts
+cost, not transaction count.
 
-For rendering, the driver costs essentially nothing: a full render measured **34 ms**
-against **33.8 ms** for the same render on the old MEMFS/PDO path, which retires the worry
-that a bridged driver would be a regression. The cache ladder around it was 1 ms / 26 ms /
-34 ms / 81 ms.
+Rendering is unaffected: a full render measures **34 ms** against **33.8 ms** for the same render
+on the MEMFS/PDO path. The cache ladder around it is 1 ms / 26 ms / 34 ms / 81 ms.
 
-The known future cost is the installer: hundreds of rows per transaction is where O(W\*R)
-first hurts, and the fix is a per-transaction replay cache keyed on buffer length. The
-counters to prove it works already exist.
+### Installers
 
----
+`tests/run-installer.php` drives `install_drupal()` through this driver and installs the whole
+`standard` profile:
 
-## 📁 Files
+|                                                 | value                        |
+| ----------------------------------------------- | ---------------------------- |
+| statements the host executed                    | **41,170**                   |
+| of which single-statement bridge calls          | **2,220**                    |
+| host transactions                               | **401**                      |
+| of which speculative (replayed and rolled back) | **394**                      |
+| statements executed inside those replays        | **37,814**                   |
+| widest transaction                              | **380 statements**           |
+| errors Drupal raised and recovered from         | 18                           |
+| result                                          | 39 tables, 939 rows, HTTP200 |
 
-| File                            | Lines | What it is                                                                       |
-| ------------------------------- | ----- | -------------------------------------------------------------------------------- |
-| `Connection.php`                | 945   | extends the core sqlite `Connection`; owns the write buffer and `runStatement()` |
-| `SqlAnalyzer.php`               | 488   | classifies statements, names their tables, renames four functions                |
-| `CfwSqlClient.php`              | 452   | stands where `\PDO` stands; the only class that talks to the host                |
-| `TransactionBuffer.php`         | 286   | the withheld writes, the savepoint marks, the dirty-table set                    |
-| `Statement.php`                 | 206   | extends `StatementBase`; one host reply becomes one `PrefetchedResult`           |
-| `TransactionManager.php`        | 137   | maps begin/commit/rollback/savepoints onto the buffer, emitting no SQL           |
-| `Install/Tasks.php`             | 144   | installability is "the host installed the bridge", not "PDO has a driver"        |
-| `Upsert.php`                    | 121   | re-batches by placeholder count under the 100-parameter ceiling                  |
-| `ExceptionHandler.php`          | 99    | maps SQLite constraint messages onto `IntegrityConstraintViolationException`     |
-| `SqlErrorException.php`         | 55    | carries the engine message; there is no SQLSTATE to classify by                  |
-| `Schema.php`                    | 45    | one override: `NOCASE_UTF8` becomes builtin `NOCASE`                             |
-| `UncommittedStateException.php` | 21    | a query would have to observe buffered state and cannot                          |
-| `HostBridgeException.php`       | 16    | the bridge is missing or returned something unusable                             |
+**92% of everything the engine executed was a replay** — 37,814 of 41,170. The node-save figure
+above (54 of 59) is the same ratio at a smaller scale; at 380 statements per transaction it is the
+whole cost. Hundreds of rows per transaction is where O(W\*R) first hurts.
 
----
+The resulting site matches the one core's own sqlite driver builds: same 39 tables, same 939 rows,
+one row of difference (`system.schema` for `cfw_do_sqlite`), and the front page renders 11,521
+bytes with HTTP 200. The harness asserts that against a control install rather than a hard-coded
+table list.
 
-## 🎨 Formatting and Coding Standards
+Reducing the cost means fewer _resolutions_, not a faster bridge. `Insert::execute()` asks for
+`lastInsertId()` immediately after buffering each row, and Drupal's multi-row `Insert::execute()`
+discards every id but the last while still paying a replay for each.
 
-**Prettier owns layout. phpcs owns meaning. PHPStan owns types.** Every language in the
-repository, PHP included, is laid out by Prettier at **tabs rendered 4 wide, `printWidth`
-100, LF, UTF-8** — the house style recorded in `.editorconfig` and `.prettierrc`.
+The replay cache does not move that number. It removes repeated resolutions —
+a second `lastInsertId()` for the same buffered insert, a deferred `rowCount()` a dirty
+read has already replayed past. It cannot remove the _first_ resolution of a newly
+buffered statement, because the newest buffer index is by definition the one no earlier
+replay covered, and `Insert::execute()` asks for `lastInsertId()` immediately after
+buffering each row. So the alternating write-then-read pair stays at `N(N+1)`, the suite
+still asserts **12 for N=3**, and the installer's cost is unchanged until something reduces
+the number of resolutions rather than their repeat rate.
 
-```bash
-bun run prettier:check # layout, every language including PHP
-bun run lint:php       # phpcs: docs, naming, API misuse
-bun run analyze        # phpstan, level 5, --memory-limit=1G
-```
+`CfwSqlClient` holds `$statementCount`, `$transactionCount`, `$speculativeCount` and
+`$replayedStatementCount`, surfaced on `Connection`. Each is asserted against `FakeHost`'s own
+count of the same thing, since a counter asserted against itself proves nothing. The installer
+figures are read directly off them.
 
-`@prettier/plugin-php` and the stock `Drupal` standard cannot both be right about layout,
-because the standard hard-codes 2 spaces and Drupal's own brace placement. phpcs loses that
-argument, and `phpcs.xml.dist` names each sniff it gives up with the measurement that found
-it: with the tree formatted at `useTabs`, phpcs reported **5,275 violations across exactly 9
-sniff codes and nothing else**, every one pure whitespace or brace position. Excluding those
-nine leaves phpcs checking docblocks, naming, arrays, line length and every Drupal and
-DrupalPractice API-misuse rule.
-
-Two further deviations are deliberate and also carry their reason inline: the line limit is
-raised from 80 to 100 to match `printWidth`, and the two sniffs that demand capitalised `//`
-comments ending in a full stop are excluded to match this project's comment style. Every
-`Drupal.Commenting.DocComment.*` sniff stays on, because a `/** */` block is real
-documentation.
-
-`phpstan.neon` pins **level 5** over `src/`, matching the reference Drupal module in this
-workspace. It must be run with `--memory-limit=1G`: the 128M default OOMs partway through
-and reports a small error count that reads like a pass.
-
-## 🧪 Testing
-
-```sh
-php tests/lint.php                                  # 17 files, needs nothing but PHP
-php tests/run-driver-suite.php /path/to/drupal-11.2 # 132 assertions
-php tests/coverage.php /path/to/drupal-11.2         # the same suite, under a coverage driver
-```
-
-`tests/coverage.php` wraps the suite rather than replacing it: it starts a coverage driver,
-requires `run-driver-suite.php`, and writes `coverage/rom.clover.xml` plus a text summary
-from a shutdown handler, because the suite ends in `exit()`. Only `src/` is measured. It
-exits **2 without running anything** when the Drupal root or the coverage driver is missing,
-so a CI job cannot upload a report it never measured. Current line coverage of `src/` is
-**67.16%** (548 of 816 lines).
-
-The suite needs a Drupal 11 checkout with `vendor/` installed and PHP with `pdo_sqlite`. It
-reads the Drupal tree, writes nothing, and the database is `sqlite::memory:`. It can be run
-from any working directory, because it resolves its own PSR-4 map from `__DIR__`.
-
-**The root has to be a release-tarball layout**, with `vendor/` and `core/` as siblings —
-which is what `.github/workflows/build.yml` fetches. A `drupal/recommended-project` install
-puts core under `web/` and `vendor/` at the project root, so no single path satisfies both
-checks and the suite exits 2 with "Pass a Drupal 11 root with `vendor/` installed". Point it
-at a tarball root instead.
-
-| Lane                         | Where it runs             | Count   | Proves                                              |
-| ---------------------------- | ------------------------- | ------- | --------------------------------------------------- |
-| `tests/run-driver-suite.php` | any PHP with `pdo_sqlite` | **132** | the PHP half, against a stand-in host               |
-| `/driver` route              | a live Durable Object     | **32**  | the platform half, against real `ctx.storage.sql`   |
-| a rendered front page        | a live Durable Object     | -       | 12,304 bytes, `x-drupal-cache: MISS`, 81 statements |
-
-**What the stand-in host can and cannot prove.** Underneath it is PDO SQLite speaking the
-same JSON contract as the Worker's `do-sqlite.js`, so it proves the write buffering, the
-read/write overlap analysis, the savepoint truncation, the function substitution, the codec
-normalisation and the integration with Drupal's own query builders and schema handling. It
-proves **nothing** about the runtime: whether `PRAGMA table_info` is allowed, whether the
-engine has `concat()`, or how any of it behaves across events.
-
-That gap has bitten, which is why the fixture now enforces the platform's limits itself.
-Local PDO allows 32,766 bound parameters and the host allows 100, and that difference hid
-a live cache-write defect behind a green suite. `FakeHost::MAX_PLACEHOLDERS` closes it.
-
-Running the two halves together settled four platform refusals a stand-in could never show,
-and exposed three real bugs in this driver, all fixed:
-
-1. **`version()` threw on every call**, because it was `SELECT sqlite_version()`. It now
-   catches the refusal and probes for a floor.
-2. **`queryTemporary()` surfaced a raw `SQLITE_AUTH`.** It now throws a message naming the
-   cause. Auditing core found **zero callers** outside the interface declaration and the
-   three driver implementations, and the class still inherits
-   `SupportsTemporaryTablesInterface` from the core sqlite driver so an `instanceof` check
-   cannot be made to fail — throwing loudly is the only way a caller learns.
-3. **A wide integer could not be written at all**, because the codec produces a JS BigInt
-   and `sql.exec()` refuses one. The host now converts to a decimal string and SQLite
-   applies the column's INTEGER affinity, verified by `typeof(col)` returning `integer`.
-
----
-
-## 🔄 CI
-
-Default branch is `master`, and every workflow filters on it so a push and its pull request
-do not both fire.
-
-| Workflow       | Trigger                   | What it does                                                                                                                                                               | Secrets                                 |
-| -------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| `build.yml`    | push / PR / manual        | `build`: `composer validate --strict`, `php -l`, phpcs and **PHPStan** on 8.3 and 8.4. `e2e` needs `build`, so a PHPStan error blocks the 132-assertion suite from running | none                                    |
-| `coverage.yml` | push / PR / manual        | the same suite under pcov, uploading `coverage/rom.clover.xml` to Codecov and posting the summary on the PR                                                                | `CODECOV_TOKEN`                         |
-| `prettier.yml` | push / PR                 | `bun run prettier:check`                                                                                                                                                   | none                                    |
-| `release.yml`  | manual / nightly schedule | manual: tag, GitHub release and changelog. Nightly: the full gate, then a commit-hash prerelease and a Packagist refresh so `dev-master` points at that commit             | `PACKAGIST_USERNAME`, `PACKAGIST_TOKEN` |
-
-The suite runs with `opcache.enable_cli=0`, matching how the sibling repo runs it, so a
-cached class cannot mask an inheritance change.
-
-**The nightly is a build of the tip, not a version.** Its tag is
-`nightly-<date>-<short-sha>`, which is deliberately not a valid Composer version, so
-Packagist ignores it and `composer require drupflare/rom` is unaffected. To install exactly
-that code, require `dev-master`. The nightly skips itself when there were no commits in the
-last 24 hours, and it runs lint, phpcs, PHPStan and the driver suite before it publishes
-anything: a nightly that ships a red tip is worse than no nightly.
-
-`release.yml`'s Packagist steps are skipped when the two secrets are absent, because
-Packagist installs its own push hook when GitHub is connected and the API call is only the
-fallback for an account without one.
-
----
-
-## 🚧 What Remains
-
-In priority order.
-
-1. **Install Drupal onto it.** The real test: hundreds of statements, DDL and DML
-   interleaved, most of it inside transactions. Expect the O(W\*R) replay cost to be the
-   first thing that hurts and the fix to be a per-transaction replay cache keyed on buffer
-   length. Note that the shipping path avoids the installer entirely — a pre-built site is
-   replayed instead — so this is about making the driver generally usable, not about
-   unblocking the Worker.
-2. **Decide what to do about `REGEXP`.** It is reachable from Views and from entity
-   queries. The options are a documented functional limitation or moving those comparisons
-   into PHP. Neither is a driver fix.
-3. **Wire `statementCount()` into the observability story.** With speculative replays, the
-   number of host statements diverges from the number of Drupal queries, and the gap is the
-   interesting signal.
-4. **Decide whether prefixes ever need to work.** A non-empty prefix throws at
-   construction, which also means Drupal's own test runner cannot use this driver. One
-   Durable Object per site makes that the right trade, but it is a decision rather than an
-   oversight.
-5. **The suspension hazard.** A suspension point must never land inside a transaction
-   replay. It is currently unreachable — the whole save is one synchronous `php._run()` —
-   so this is a standing constraint on any future JSPI build rather than a live bug.
+They are wired into an observability story rather than only into tests:
+`worker/src/drupal/site-php.ts:1316` reads `statementCount()` into `$out['statementCount']`
+on the `/driver` route. The four counters live on the `CfwSqlClient`, so they are per-connection,
+and Drupal opens more than one connection across an install. `FakeHost`'s counters are
+process-wide, so the harness compares the two rather than assuming they match.
 
 ---
 
@@ -672,7 +566,24 @@ In priority order.
 
 This driver does **not** require `drupflare/drupflare`, and that module does not require
 this driver — they share no class and no service. They are listed in each other's `suggest`
-because a Worker deployment normally wants both, which is what `suggest` is for.
+because a Worker deployment normally wants both.
+
+---
+
+## 🤝 Contributing
+
+Clone the repositories as siblings and point Composer at the local checkout with a path
+repository; it symlinks, so edits are live with no reinstall.
+
+```sh
+composer install
+composer run lint       # phpcs: docs, naming, API misuse
+composer run analyze    # phpstan level 5, --memory-limit=1G
+bunx prettier --check . # layout, every language including PHP
+
+DRUPAL_ROOT=/path/to/drupal php tests/run-driver-suite.php # 204 assertions
+php tests/run-installer.php                                # 16; installs Drupal for real
+```
 
 ---
 
