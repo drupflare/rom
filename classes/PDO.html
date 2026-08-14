@@ -82,64 +82,64 @@
 								<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle " data-toggle="collapse" data-target="#namespace-1617102072"></a>
+									<a class="accordion-toggle " data-toggle="collapse" data-target="#namespace-111794765"></a>
 								<a href="namespaces/default.html" style="margin-left: 30px; padding-left: 0">\</a>
 			</div>
-			<div id="namespace-1617102072" class="accordion-body collapse in">
+			<div id="namespace-111794765" class="accordion-body collapse in">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-658389923"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-763425748"></a>
 								<a href="namespaces/drupal.html" style="margin-left: 30px; padding-left: 0">Drupal</a>
 			</div>
-			<div id="namespace-658389923" class="accordion-body collapse ">
+			<div id="namespace-763425748" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-562840996"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-2108348899"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
 			</div>
-			<div id="namespace-562840996" class="accordion-body collapse ">
+			<div id="namespace-2108348899" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-106870043"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1020192892"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver.html" style="margin-left: 30px; padding-left: 0">Driver</a>
 			</div>
-			<div id="namespace-106870043" class="accordion-body collapse ">
+			<div id="namespace-1020192892" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1714495630"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-2033592572"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database.html" style="margin-left: 30px; padding-left: 0">Database</a>
 			</div>
-			<div id="namespace-1714495630" class="accordion-body collapse ">
+			<div id="namespace-2033592572" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-795365985"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-723863056"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
 			</div>
-			<div id="namespace-795365985" class="accordion-body collapse ">
+			<div id="namespace-723863056" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-278646907"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-768625641"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite-install.html" style="margin-left: 30px; padding-left: 0">Install</a>
 			</div>
-			<div id="namespace-278646907" class="accordion-body collapse ">
+			<div id="namespace-768625641" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 					
@@ -400,10 +400,7 @@
                 <h3 class="public ">FETCH_DEFAULT</h3>
                 <pre class="signature">FETCH_DEFAULT = 0</pre>
                 <p><em>The fetch modes, as ext/pdo/php_pdo_driver.h numbers them.</em></p>
-                <p>FETCH_CLASSTYPE and FETCH_PROPS_LATE are flags rather than modes, which is
-why they are powers of two well above the rest: core ORs them into
-FETCH_CLASS.</p>
-
+                
             </article>
         </div>
         <aside class="span4 detailsbar">
@@ -739,9 +736,16 @@ FETCH_CLASS.</p>
             <a id="constant_FETCH_CLASSTYPE" name="constant_FETCH_CLASSTYPE" class="anchor"></a>
             <article id="constant_FETCH_CLASSTYPE" class="constant">
                 <h3 class="public ">FETCH_CLASSTYPE</h3>
-                <pre class="signature">FETCH_CLASSTYPE = 128</pre>
-                <p><em></em></p>
-                
+                <pre class="signature">FETCH_CLASSTYPE = \PHP_VERSION_ID &gt;= 80500 ? 1 &lt;&lt; 7 : 0x40000</pre>
+                <p><em>The two fetch FLAGS, which core ORs into FETCH_CLASS.</em></p>
+                <p>PHP 8.5 REPACKED THESE and nothing else in this file moved with them.
+php_pdo_driver.h widened PDO_FETCH_FLAGS from 0xFFFF0000 to 0xFFFFFFF0 and
+moved the flags down from the high half-word to bits 5-9, so CLASSTYPE went
+0x00040000 -&gt; 1&lt;&lt;7 and PROPS_LATE went 0x00100000 -&gt; 1&lt;&lt;8. Read out of the
+headers: 8.3.11 and 8.4.1 carry the old layout, 8.5.2 and 8.5.7 the new one.
+tests/pdo-shim.php checks both against whatever extension is running, which
+is what makes the 80500 boundary a claim CI can refute rather than a guess.</p>
+
             </article>
         </div>
         <aside class="span4 detailsbar">
@@ -765,7 +769,7 @@ FETCH_CLASS.</p>
             <a id="constant_FETCH_PROPS_LATE" name="constant_FETCH_PROPS_LATE" class="anchor"></a>
             <article id="constant_FETCH_PROPS_LATE" class="constant">
                 <h3 class="public ">FETCH_PROPS_LATE</h3>
-                <pre class="signature">FETCH_PROPS_LATE = 256</pre>
+                <pre class="signature">FETCH_PROPS_LATE = \PHP_VERSION_ID &gt;= 80500 ? 1 &lt;&lt; 8 : 0x100000</pre>
                 <p><em></em></p>
                 
             </article>
@@ -1115,7 +1119,7 @@ same reason the constructor cannot, and no reachable call site names it.</p>
 							</a>
 							and authored
 							                    on
-							August 14th, 2026 at 08:27.
+							August 14th, 2026 at 08:55.
 						</section>
 					</section>
 				</section>
