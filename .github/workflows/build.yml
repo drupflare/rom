@@ -91,5 +91,7 @@ jobs:
           tar -xzf /tmp/drupal.tar.gz --strip-components=1 -C drupal-root
       - name: Run Driver Suite E2E Tests
         run: php -d opcache.enable_cli=0 tests/run-driver-suite.php ./drupal-root
+      - name: Check the Userland PDO Against This PHP
+        run: php -d opcache.enable_cli=0 tests/pdo-shim.php ./drupal-root
       - name: Install a Site Through the Driver
         run: php -d opcache.enable_cli=0 tests/run-installer.php ./drupal-root
