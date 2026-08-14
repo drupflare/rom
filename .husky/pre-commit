@@ -1,3 +1,2 @@
 #!/bin/sh
 bunx lint-staged
-php tests/lint.php

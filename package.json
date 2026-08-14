@@ -26,6 +26,9 @@
 	},
 	"lint-staged": {
 		"*.{md,json,yml}": "prettier --write",
-		"*.{php,module,install,inc}": "./vendor/bin/phpcs --"
+		"*.{php,module,install,inc}": [
+			"./vendor/bin/phpcs --",
+			"php tests/lint.php"
+		]
 	}
 }

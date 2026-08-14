@@ -3,11 +3,6 @@
 *.jpg binary
 *.ico binary
 
-# keep the Packagist archive to the code a consumer installs; everything below is
-# development-only and would otherwise ship inside web/modules/contrib.
-# the directories are listed twice on purpose: git archive prunes a directory marked
-# export-ignore, but `git check-attr` on a file inside it reports "unspecified", so the
-# /** form is what makes the exclusion verifiable per file rather than only documented
 /.github export-ignore
 /.github/** export-ignore
 /.husky export-ignore
@@ -36,6 +31,5 @@
 /renovate.json export-ignore
 /CLAUDE.md export-ignore
 
-# static-analysis stubs; loading them at runtime is a Cannot-redeclare fatal
 stubs/ export-ignore
 stubs/** export-ignore
