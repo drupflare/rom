@@ -50,6 +50,19 @@ final class TransactionBuffer
 	private ?int $lastInsertIndex = null;
 
 	/**
+	 * Per-index results learned from a replay, keyed by buffer index.
+	 *
+	 * A replay always starts from the same committed state and runs statements 0..k in
+	 * order, so the result of statement i is a function of the buffer's first i+1 entries
+	 * and of nothing else. Those entries never change while they are buffered - a buffer
+	 * only grows, except at a savepoint rollback, which truncates and is handled in
+	 * rollbackTo(). So an answer learned once stays correct until the transaction ends.
+	 *
+	 * @var array<int, array{lastInsertId: string, changes: int}>
+	 */
+	private array $resolved = [];
+
+	/**
 	 * Appends a statement.
 	 *
 	 * @param string $sql
@@ -127,6 +140,45 @@ final class TransactionBuffer
 	}
 
 	/**
+	 * Records what a replay learned about each buffered statement.
+	 *
+	 * Every speculative replay hands back one result per statement it ran, whether it was
+	 * opened to resolve an insert id, to resolve a row count, or to answer a dirty read.
+	 * The read case is the valuable one: it replays the WHOLE buffer, so it answers every
+	 * outstanding id and row count as a side effect of work already being paid for.
+	 *
+	 * @param array<int, array{lastInsertId?: string, changes?: int}> $results
+	 *   Host results, keyed by buffer index. Anything past the end of the buffer is
+	 *   ignored rather than trusted.
+	 */
+	public function rememberResults(array $results): void
+	{
+		foreach ($results as $index => $result) {
+			if (!isset($this->statements[$index])) {
+				continue;
+			}
+			$this->resolved[$index] = [
+				'lastInsertId' => (string) ($result['lastInsertId'] ?? '0'),
+				'changes' => (int) ($result['changes'] ?? 0),
+			];
+		}
+	}
+
+	/**
+	 * Returns what a previous replay learned about one buffered statement.
+	 *
+	 * @param int $index
+	 *   The buffer index.
+	 *
+	 * @return array{lastInsertId: string, changes: int}|null
+	 *   The result, or NULL when no replay has covered that statement yet.
+	 */
+	public function resolvedResult(int $index): ?array
+	{
+		return $this->resolved[$index] ?? null;
+	}
+
+	/**
 	 * Returns whether any of the given tables has a buffered write.
 	 *
 	 * @param string[] $tables
@@ -201,6 +253,13 @@ final class TransactionBuffer
 			);
 		}
 		$this->statements = array_slice($this->statements, 0, $this->savepoints[$name]);
+
+		foreach (array_keys($this->resolved) as $index) {
+			if (!isset($this->statements[$index])) {
+				unset($this->resolved[$index]);
+			}
+		}
+
 		$this->release($name);
 		$this->recomputeDirtyTables();
 	}
