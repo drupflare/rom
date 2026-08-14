@@ -82,6 +82,128 @@ final class Statement extends StatementBase implements StatementInterface
 	}
 
 	/**
+	 * Where an oversized read can be split, or NULL when it cannot be.
+	 *
+	 * WHY THIS EXISTS. The host caps a statement at 100 bound parameters. `Upsert` already chunks
+	 * WRITES against that ceiling, and the read path had no equivalent because nothing had ever
+	 * generated an oversized read -- until a module install made Drupal's config storage load 169
+	 * names in one `IN()`, which failed with "too many SQL variables" and left the install
+	 * half-applied: `core.extension` written, the rest of the install not.
+	 *
+	 * REFUSES FAR MORE THAN IT ACCEPTS, and every refusal is a case where concatenating batches
+	 * would silently return the wrong answer rather than an error:
+	 *
+	 *   - not a SELECT: splitting a write changes what it writes.
+	 *   - `ORDER BY`, `LIMIT` or `OFFSET`: global ordering and cut-off cannot be reconstructed from
+	 *     independently ordered batches, and the result would look plausible.
+	 *   - `GROUP BY`, `DISTINCT` or an aggregate: the answer is a fold over the whole set, so a
+	 *     per-batch fold is a different number.
+	 *   - more than one placeholder `IN()` list, or an `IN()` holding anything but placeholders:
+	 *     which list to split is then a guess.
+	 *   - a statement whose NON-list parameters alone already exceed the ceiling: no batch size
+	 *     helps, so failing loudly is correct.
+	 *
+	 * @return array{prefix: string, names: list<string>, suffix: string}|null
+	 *   The split point, or NULL when the statement must not be split.
+	 */
+	private static function splitPointFor(string $query, array $args): ?array
+	{
+		if (count($args) <= Connection::MAX_BOUND_PARAMETERS) {
+			return null;
+		}
+		if (preg_match('/^\s*SELECT\b/i', $query) !== 1) {
+			return null;
+		}
+		if (
+			preg_match(
+				'/\b(?:ORDER\s+BY|LIMIT|OFFSET|GROUP\s+BY|DISTINCT|COUNT\s*\(|SUM\s*\(|MIN\s*\(|MAX\s*\(|AVG\s*\()/i',
+				$query,
+			) === 1
+		) {
+			return null;
+		}
+
+		// an IN list of nothing but named placeholders, which is the only shape core generates for
+		// a multi-name load and the only one whose split is exact
+		$pattern = '/\bIN\s*\(\s*(:[A-Za-z0-9_]+(?:\s*,\s*:[A-Za-z0-9_]+)+)\s*\)/i';
+		if (preg_match_all($pattern, $query, $matches, PREG_OFFSET_CAPTURE) !== 1) {
+			return null;
+		}
+
+		$listText = $matches[1][0][0];
+		$listAt = (int) $matches[1][0][1];
+		$names = array_map(
+			static fn(string $n): string => ltrim(trim($n), ':'),
+			explode(',', $listText),
+		);
+		foreach ($names as $name) {
+			if (!array_key_exists($name, $args) && !array_key_exists(':' . $name, $args)) {
+				// a placeholder with no argument means this is not the list being bound
+				return null;
+			}
+		}
+		if (count($args) - count($names) >= Connection::MAX_BOUND_PARAMETERS) {
+			return null;
+		}
+
+		return [
+			'prefix' => substr($query, 0, $listAt),
+			'names' => $names,
+			'suffix' => substr($query, $listAt + strlen($listText)),
+		];
+	}
+
+	/**
+	 * Runs an oversized read as batches and merges the rows.
+	 *
+	 * Exact rather than approximate: the batches partition the IN list, so their union is the
+	 * original result set. `rowCount` is summed; a SELECT writes nothing, so there is no buffered
+	 * write to reconcile and `bufferIndex` stays whatever the last batch reported.
+	 */
+	private function runSplitInList(array $args): array
+	{
+		$point = self::splitPointFor($this->queryString, $args);
+		if ($point === null) {
+			// unreachable through execute(), which checks first; kept so a future caller cannot
+			// silently get an unsplit oversized statement
+			return $this->driverConnection->runStatement($this->queryString, $args);
+		}
+
+		$keyOf = static fn(string $name): string => array_key_exists($name, $args)
+			? $name
+			: ':' . $name;
+		$fixed = $args;
+		foreach ($point['names'] as $name) {
+			unset($fixed[$keyOf($name)]);
+		}
+
+		$budget = Connection::MAX_BOUND_PARAMETERS - count($fixed);
+		$batches = array_chunk($point['names'], max(1, $budget));
+
+		$rows = [];
+		$rowCount = 0;
+		$bufferIndex = null;
+		foreach ($batches as $batch) {
+			$list = implode(', ', array_map(static fn(string $n): string => ':' . $n, $batch));
+			$batchArgs = $fixed;
+			foreach ($batch as $name) {
+				$batchArgs[$keyOf($name)] = $args[$keyOf($name)];
+			}
+			$outcome = $this->driverConnection->runStatement(
+				$point['prefix'] . $list . $point['suffix'],
+				$batchArgs,
+			);
+			foreach ($outcome['rows'] as $row) {
+				$rows[] = $row;
+			}
+			$rowCount += (int) ($outcome['rowCount'] ?? 0);
+			$bufferIndex = $outcome['bufferIndex'] ?? $bufferIndex;
+		}
+
+		return ['rows' => $rows, 'rowCount' => $rowCount, 'bufferIndex' => $bufferIndex];
+	}
+
+	/**
 	 * {@inheritdoc}
 	 */
 	public function execute($args = [], $options = [])
@@ -97,10 +219,11 @@ final class Statement extends StatementBase implements StatementInterface
 		$startEvent = $this->dispatchStatementExecutionStartEvent($args);
 
 		try {
-			$outcome = $this->driverConnection->runStatement(
-				$this->queryString,
-				self::normalizeArgs($args),
-			);
+			$normalized = self::normalizeArgs($args);
+			$outcome =
+				self::splitPointFor($this->queryString, $normalized) !== null
+					? $this->runSplitInList($normalized)
+					: $this->driverConnection->runStatement($this->queryString, $normalized);
 		} catch (Exception $e) {
 			$this->dispatchStatementExecutionFailureEvent($startEvent, $e);
 			throw $e;
