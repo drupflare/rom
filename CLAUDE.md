@@ -29,14 +29,16 @@ rename it as tidying. If it is ever renamed it is a major version and both repos
 on the edge**. The worker packs it into `assets/driver.json`, which the Durable Object mounts.
 
 **This repo's suite is the authority on behaviour**: `DRUPAL_ROOT=<worker>/drupal-src php
-tests/run-driver-suite.php` - 188 assertions. A change made only in the worker is untested code on
+tests/run-driver-suite.php` - 204 assertions. A change made only in the worker is untested code on
 the edge. The worker's `bun run check:sync` covers both copies plus the packed artifact; run its
 `bun run assets:driver` after any change here.
 
 `tests/run-driver-suite.php` and `tests/fixtures/FakeHost.php` must stay **byte-identical** to the
 worker's copies - `check-module-sync.ts` deliberately keeps them off its repo-only list. Repo-only
 files there are `composer.json`, `package.json`, `phpstan.neon`, `codecov.yml`, `renovate.json`,
-`tests/lint.php` and the docs; `tests/coverage.php` is NOT on that list yet and needs adding.
+`tests/lint.php`, `tests/load-classes.php`, `tests/coverage.php` and the docs. **`tests/run-installer.php`
+is repo-only and needs adding to that `REPO_ONLY` set**, or the worker's `check:sync` reports it as
+"only in ../rom" and exits 1.
 
 ## Drupal 11.2 is a measured floor
 
@@ -98,6 +100,14 @@ alternating write-then-read pair is still `N(N+1)` and the suite still asserts *
 not write that the cache fixed the installer; what would fix it is fewer resolutions, not fewer
 repeats.
 
+**The installer has now been run and the term is measured rather than predicted.** A `standard`
+install through this driver: **41,170 statements, of which 37,814 were replays - 92%** - across 401
+host transactions, 394 of them speculative, with a widest transaction of **380 statements**. It
+completes, and the site it builds matches a control install through core's sqlite driver (39 tables,
+939 rows, one extra `system.schema` row for the driver module) with the front page at HTTP 200. So
+the term is dominant AND survivable; the next thing that moves it is Drupal's multi-row
+`Insert::execute()`, which discards every `lastInsertId()` but the last and pays a replay for each.
+
 ## Rules
 
 - **Refuse with a named reason rather than truncating.** A silently truncated value is
@@ -106,7 +116,15 @@ repeats.
 - **Never widen a limit because a test passes.** These came from a deployed object. Re-measure on a
   deployed worker if you think one is wrong.
 - Transactions are a buffer plus atomic replay via `execTxn()`. Commit, speculative read and
-  rollback are all verified by the suite; do not change the buffering without re-running all 188.
+  rollback are all verified by the suite; do not change the buffering without re-running all 204.
+- **A statement the engine rejects must leave the buffer.** A buffered write reports success before
+  it has run, so its refusal only surfaces at a later replay - and if it stays buffered, every later
+  replay AND the commit re-run it, so the transaction can never succeed. That is not a corner case:
+  it is Drupal's own "write, catch, create the table, carry on" idiom, which `MatcherDumper::dump()`
+  runs inside a transaction, and it killed a stock `standard` install at `DELETE FROM router`.
+  `Connection::speculate()` bisects to find the culprit, discards it and raises the error once.
+  Which statement failed is NOT in the host reply, so bisection is the only way to place it; do not
+  replace it with "blame the newest", which is wrong whenever DDL accumulates unresolved.
 - Never call `Database::startLog()` when benchmarking - it changes what you are measuring.
 
 ## Formatting: prettier owns layout, phpcs owns meaning, phpstan owns types
@@ -143,8 +161,15 @@ XML comment is invalid.
   `missingType.return` annotations.
 - Comments: lowercase, terse, one line, no trailing period, only where the WHY is non-obvious.
 - Default branch is `master`. Every workflow filters on it so a push and its PR do not double-fire.
-- The driver suite is **188 assertions** and the count is the release note: it went 101 -> 120 ->
-  132 -> 147 -> 188. Never tag on a lower number; a drop means the suite was weakened.
+- The driver suite is **204 assertions** and the count is the release note: it went 101 -> 120 ->
+  132 -> 147 -> 188 -> 204. Never tag on a lower number; a drop means the suite was weakened.
+- **`tests/run-installer.php` is a second lane, 16 assertions, and it is the only one that reaches
+  an install-shaped transaction.** The suite drives 5-6 statements per transaction; an install
+  drives 380, with DDL and DML interleaved. It installs into a throwaway COPY of the Drupal root
+  under the temp directory - a copy and not a symlink farm, because core resolves the application
+  root from its own `__DIR__`, so a symlinked `core/` sends every computed path back at the
+  original tree and the driver module is never discovered. Its acceptance check is a CONTROL
+  install through core's own sqlite driver, compared table by table, not a hard-coded table list.
 - **Four cost counters, not one.** `statementCount()` is bridge crossings; `transactionCount()` is
   host BEGINs; `speculativeCount()` is the rolled-back subset; `replayedStatementCount()` is what
   the host executed inside them. The last one is the only one that can see the O(W*R) term, because
@@ -171,7 +196,7 @@ XML comment is invalid.
 ## PHP versions: 8.5 works here, and that says nothing about the wasm side
 
 `composer.json` requires `php: ^8.3`, which already permits 8.5. **Verified rather than assumed:** the
-188-assertion driver suite passes on **PHP 8.5.7**, and Drupal core requires `>=8.3.0` with no upper
+204-assertion driver suite passes on **PHP 8.5.7**, and Drupal core requires `>=8.3.0` with no upper
 bound. CI matrices in `build.yml` cover `8.3`, `8.4`, `8.5`.
 
 That was cheap because this module is a database driver: pure PHP, one extension (`ext-json`), no

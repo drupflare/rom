@@ -9,6 +9,7 @@
 		"docs": "./vendor/bin/phpdoc -d src -t docs --title=\"drupflare/rom\" --template=\"clean\" && cp .phpdoc/template/favicon.png docs/favicon.png && cp .phpdoc/template/favicon.ico docs/favicon.ico && bash phpdoc-favicon.sh",
 		"lint": "php tests/lint.php",
 		"test": "php tests/run-driver-suite.php",
+		"test:installer": "php tests/run-installer.php",
 		"test:coverage": "php tests/coverage.php",
 		"analyze": "./vendor/bin/phpstan analyse --memory-limit=1G",
 		"prepare": "husky",

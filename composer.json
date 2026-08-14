@@ -68,12 +68,14 @@
 		"analyze": "phpstan analyse --memory-limit=1G",
 		"lint": "phpcs",
 		"lint:fix": "phpcbf",
-		"test": "php tests/run-driver-suite.php"
+		"test": "php tests/run-driver-suite.php",
+		"test:installer": "php tests/run-installer.php"
 	},
 	"scripts-descriptions": {
 		"analyze": "Runs PHPStan over src/ and tests/ at the level pinned in phpstan.neon.",
 		"lint": "Runs phpcs with the ruleset in phpcs.xml.dist.",
 		"lint:fix": "Runs phpcbf over the same ruleset.",
-		"test": "Runs the driver suite; needs a Drupal 11.2+ root in $DRUPAL_ROOT or argv[1]."
+		"test": "Runs the driver suite; needs a Drupal 11.2+ root in $DRUPAL_ROOT or argv[1].",
+		"test:installer": "Installs a Drupal site through the driver into a throwaway copy of that root."
 	}
 }
