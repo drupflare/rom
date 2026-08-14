@@ -884,11 +884,10 @@ class Connection extends SqliteDriverConnection
 			);
 		}
 
-		$replay = $this->client()->runTransaction($buffer->statementsUpTo($index), false);
-		$buffer->rememberResults($replay['results']);
-		$result = $replay['results'][$index] ?? null;
+		$this->speculate($buffer, $index);
+		$result = $buffer->resolvedResult($index);
 
-		return is_array($result) ? $result['changes'] : 0;
+		return $result !== null ? $result['changes'] : 0;
 	}
 
 	/**
@@ -948,14 +947,13 @@ class Connection extends SqliteDriverConnection
 			);
 		}
 
-		$replay = $this->client()->runTransaction($buffer->statements(), false, [
-			'sql' => $sql,
-			'params' => $params,
-		]);
 		// a dirty read replays the WHOLE buffer, so it answers every outstanding insert id
 		// and row count at no extra cost; keeping those is the only way the O(W*R) term
 		// ever shrinks rather than just being measured
-		$buffer->rememberResults($replay['results']);
+		$replay = $this->speculate($buffer, $buffer->lastIndex(), [
+			'sql' => $sql,
+			'params' => $params,
+		]);
 		$read = $replay['readResult'];
 
 		if (!is_array($read)) {
@@ -1006,11 +1004,143 @@ class Connection extends SqliteDriverConnection
 			);
 		}
 
-		$replay = $this->client()->runTransaction($buffer->statementsUpTo($index), false);
-		$buffer->rememberResults($replay['results']);
-		$result = $replay['results'][$index] ?? null;
+		$this->speculate($buffer, $index);
+		$result = $buffer->resolvedResult($index);
 
-		return is_array($result) ? $result['lastInsertId'] : '0';
+		return $result !== null ? $result['lastInsertId'] : '0';
+	}
+
+	/**
+	 * Replays the buffer speculatively, repairing it if the engine rejects a statement.
+	 *
+	 * A buffered write is reported as successful before anything has run, so a
+	 * statement SQLite would have refused sits in the buffer looking fine until some
+	 * later replay trips over it. Left there it is fatal twice over: every
+	 * subsequent replay re-runs it, and so does the commit, so the transaction can
+	 * never succeed even once the reason for the refusal is gone. On a real
+	 * connection that statement would have failed where it was issued and left no
+	 * trace - which is what Drupal's own "write, catch, create the table, carry on"
+	 * idiom is built on, and what breaks the router table during a site install.
+	 *
+	 * So a rejected statement is found, discarded, and its error raised once.
+	 *
+	 * @param TransactionBuffer $buffer
+	 *   The open buffer.
+	 * @param int $upTo
+	 *   The last buffer index to replay.
+	 * @param array{sql: string, params: array}|null $read
+	 *   (optional) A read to evaluate inside the same replay.
+	 *
+	 * @return array{results: array<int, array>, readResult: array|null}
+	 *   The host reply.
+	 *
+	 * @throws SqlErrorException
+	 *   If SQLite rejected the read, or a buffered statement that has now been
+	 *   discarded.
+	 */
+	private function speculate(TransactionBuffer $buffer, int $upTo, ?array $read = null): array
+	{
+		try {
+			$replay = $this->client()->runTransaction($buffer->statementsUpTo($upTo), false, $read);
+		} catch (SqlErrorException $e) {
+			$rejected = $this->findRejectedStatement($buffer, $upTo, $read !== null);
+			if ($rejected === null) {
+				// nothing buffered is at fault, so the trailing read is
+				throw $e;
+			}
+			$sql = $buffer->sqlAt($rejected);
+			$buffer->discardFailed($rejected);
+			// re-attributed to the statement that actually failed, which is not
+			// necessarily the one whose id or row count was being asked for
+			throw new SqlErrorException($e->getSqlError(), $sql);
+		}
+
+		$buffer->rememberResults($replay['results'], $upTo);
+
+		return $replay;
+	}
+
+	/**
+	 * Finds which buffered statement a failed replay tripped over.
+	 *
+	 * The host reports one error for the whole replay and does not say which
+	 * statement raised it, so the position is recovered by bisection: the answer is
+	 * the shortest prefix that still fails. Every probe is a speculative replay and
+	 * is counted as one, but this only runs on a path that is already an error, and
+	 * a prefix an earlier replay has already resolved is skipped - the committed
+	 * state cannot change while the buffer is open, so a replay of the same prefix
+	 * is deterministic.
+	 *
+	 * @param TransactionBuffer $buffer
+	 *   The open buffer.
+	 * @param int $upTo
+	 *   The last buffer index the failed replay covered.
+	 * @param bool $hadRead
+	 *   Whether that replay carried a trailing read, which may be the real culprit.
+	 *
+	 * @return int|null
+	 *   The buffer index of the rejected statement, or NULL when the buffer replays
+	 *   cleanly and the fault is elsewhere.
+	 */
+	private function findRejectedStatement(
+		TransactionBuffer $buffer,
+		int $upTo,
+		bool $hadRead,
+	): ?int {
+		$live = $buffer->liveIndexesUpTo($upTo);
+		if ($live === []) {
+			return null;
+		}
+		if ($hadRead && $this->replaySucceeds($buffer, $upTo)) {
+			return null;
+		}
+
+		$low = 0;
+		while ($low < count($live) && $buffer->resolvedResult($live[$low]) !== null) {
+			$low++;
+		}
+		$high = count($live) - 1;
+		if ($low > $high) {
+			// every statement here has replayed successfully before, so the buffer is
+			// not what changed; report nothing rather than discard an innocent statement
+			return null;
+		}
+
+		while ($low < $high) {
+			$middle = intdiv($low + $high, 2);
+			if ($this->replaySucceeds($buffer, $live[$middle])) {
+				$low = $middle + 1;
+			} else {
+				$high = $middle;
+			}
+		}
+
+		return $live[$low];
+	}
+
+	/**
+	 * Returns whether a prefix of the buffer replays without error.
+	 *
+	 * @param TransactionBuffer $buffer
+	 *   The open buffer.
+	 * @param int $upTo
+	 *   The last buffer index to replay.
+	 *
+	 * @return bool
+	 *   TRUE when the host accepted every statement. A successful probe keeps what
+	 *   it learned, so bisecting is not wasted work.
+	 */
+	private function replaySucceeds(TransactionBuffer $buffer, int $upTo): bool
+	{
+		try {
+			$replay = $this->client()->runTransaction($buffer->statementsUpTo($upTo), false);
+		} catch (SqlErrorException) {
+			return false;
+		}
+
+		$buffer->rememberResults($replay['results'], $upTo);
+
+		return true;
 	}
 
 	/**
