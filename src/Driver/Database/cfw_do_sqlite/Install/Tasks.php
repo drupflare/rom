@@ -8,6 +8,7 @@ use Drupal\Core\Database\Database;
 use Drupal\Core\Database\Install\Tasks as InstallTasks;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\CfwSqlClient;
+use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection;
 
 /**
  * Install-time checks for the Durable Object SQLite driver.
@@ -106,14 +107,18 @@ class Tasks extends InstallTasks
 		$form = parent::getFormOptions($database);
 
 		// none of these apply: the Durable Object's identity is the address, there
-		// is no port, no credentials, and prefixes need an ATTACH that does not
-		// exist here
+		// is no port and no credentials
 		unset(
 			$form['username'],
 			$form['password'],
 			$form['advanced_options']['host'],
 			$form['advanced_options']['port'],
-			$form['advanced_options']['prefix'],
+		);
+
+		// the prefix field stays, because a prefix works here - it is folded into the
+		// table identifier rather than addressing a second database
+		$form['advanced_options']['prefix']['#description'] = $this->t(
+			'A prefix is added to every table name, so several sites can share one Durable Object. Letters, numbers and underscores only: a period would select a schema, and there is only one database here.',
 		);
 
 		$form['database']['#title'] = $this->t('Database Label');
@@ -125,6 +130,33 @@ class Tasks extends InstallTasks
 			: $database['database'];
 
 		return $form;
+	}
+
+	/**
+	 * {@inheritdoc}
+	 *
+	 * The base class accepts a period in a prefix, because on every other driver it
+	 * selects a schema. There is nothing here for it to select, so it is rejected at the
+	 * form rather than at construction, where the installer would surface it as a fatal.
+	 */
+	public function validateDatabaseSettings(array $database)
+	{
+		$errors = parent::validateDatabaseSettings($database);
+
+		$prefix = $database['prefix'] ?? '';
+		if (
+			is_string($prefix) &&
+			$prefix !== '' &&
+			!Connection::isSupportedPrefix($prefix) &&
+			!isset($errors[$database['driver'] . '][prefix'])
+		) {
+			$errors[$database['driver'] . '][prefix'] = $this->t(
+				'The table prefix %prefix contains a period. A period selects a schema, and a Durable Object exposes exactly one database with no ATTACH to add another. Use letters, numbers and underscores.',
+				['%prefix' => $prefix],
+			);
+		}
+
+		return $errors;
 	}
 
 	/**
