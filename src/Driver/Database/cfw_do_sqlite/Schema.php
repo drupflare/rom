@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite;
 
+use Drupal\Core\Database\InvalidQueryException;
 use Drupal\sqlite\Driver\Database\sqlite\Schema as SqliteDriverSchema;
 
 /**
@@ -31,6 +32,34 @@ use Drupal\sqlite\Driver\Database\sqlite\Schema as SqliteDriverSchema;
 class Schema extends SqliteDriverSchema
 {
 	/**
+	 * The connection, typed to this driver so its synthetic schema list is reachable.
+	 */
+	private readonly Connection $driverConnection;
+
+	/**
+	 * Constructs a Schema.
+	 *
+	 * @param object $connection
+	 *   The connection this schema belongs to.
+	 *
+	 * @throws HostBridgeException
+	 *   If the connection is not this driver's.
+	 */
+	public function __construct($connection)
+	{
+		if (!($connection instanceof Connection)) {
+			throw new HostBridgeException(
+				sprintf(
+					'The cfw_do_sqlite schema needs this driver\'s Connection, got %s.',
+					get_debug_type($connection),
+				),
+			);
+		}
+		parent::__construct($connection);
+		$this->driverConnection = $connection;
+	}
+
+	/**
 	 * {@inheritdoc}
 	 */
 	protected function createFieldSql($name, $spec)
@@ -41,5 +70,62 @@ class Schema extends SqliteDriverSchema
 		// building; the first occurrence is always the collation clause, because the
 		// parent appends it before any DEFAULT literal
 		return (string) preg_replace('/ COLLATE NOCASE_UTF8/', ' COLLATE NOCASE', $sql, 1);
+	}
+
+	/**
+	 * {@inheritdoc}
+	 *
+	 * Callers pass an unprefixed expression - core's own are 'test%', 'migrate_map_d7_node%'
+	 * and '%' - and expect unprefixed names back, so the prefix is applied on the way in and
+	 * stripped on the way out. The core sqlite version does neither, because there a prefixed
+	 * table is in another schema under its bare name.
+	 */
+	public function findTables($table_expression)
+	{
+		$prefix = $this->driverConnection->getPrefix();
+		$pattern = $prefix . $table_expression;
+
+		if (strlen($pattern) > Connection::MAX_LIKE_PATTERN_BYTES) {
+			throw new InvalidQueryException(
+				sprintf(
+					'findTables() would send a %d-byte LIKE pattern and ctx.storage.sql refuses any pattern over %d bytes ("pattern too complex"). The prefix is part of that length. Shorten the prefix or the expression.',
+					strlen($pattern),
+					Connection::MAX_LIKE_PATTERN_BYTES,
+				),
+			);
+		}
+
+		$tables = [];
+		foreach ($this->driverConnection->getAttachedDatabases() as $schema) {
+			// the schema cannot be a placeholder: the statement would have to read
+			// :prefixsqlite_master, which is not a thing
+			$result = $this->driverConnection->query(
+				'SELECT name FROM [' .
+					$schema .
+					'].sqlite_master WHERE type = :type AND name LIKE :table_name AND name NOT LIKE :pattern',
+				[
+					':type' => 'table',
+					':table_name' => $pattern,
+					':pattern' => 'sqlite_%',
+				],
+			);
+			foreach ($result->fetchAllKeyed(0, 0) as $name) {
+				// LIKE narrows, PHP proves: an underscore in the prefix is a LIKE wildcard,
+				// so the pattern can over-select. It can never under-select, which is what
+				// makes checking the survivors here sufficient rather than merely tidy
+				if (!str_starts_with($name, $prefix)) {
+					continue;
+				}
+				$unprefixed = substr($name, strlen($prefix));
+				// a table whose whole name is the prefix is not a prefixed table, and an
+				// empty key would surprise the caller
+				if ($unprefixed === '') {
+					continue;
+				}
+				$tables[$unprefixed] = $unprefixed;
+			}
+		}
+
+		return $tables;
 	}
 }

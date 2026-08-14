@@ -65,6 +65,28 @@ final class CfwSqlClient
 	private int $statementCount = 0;
 
 	/**
+	 * How many host transactions have been opened on this connection.
+	 *
+	 * Counts every runTransaction() call, committing or not, because each one is a
+	 * BEGIN on the host side and each one is billed as such.
+	 */
+	private int $transactionCount = 0;
+
+	/**
+	 * How many of those transactions were speculative, so rolled back rather than committed.
+	 */
+	private int $speculativeCount = 0;
+
+	/**
+	 * How many statements were re-sent inside speculative replays.
+	 *
+	 * The one figure that makes the O(W*R) term visible. statementCount() counts a
+	 * replay as ONE statement, because one host call crossed the bridge; this counts
+	 * what the host actually executed inside it, which is what grows with the buffer.
+	 */
+	private int $replayedStatementCount = 0;
+
+	/**
 	 * Constructs a CfwSqlClient.
 	 *
 	 * @param mixed $execFunction
@@ -169,6 +191,14 @@ final class CfwSqlClient
 			);
 		}
 
+		// counted BEFORE the call, so a host that throws still shows the attempt. A counter that
+		// only records successes cannot show a retry loop, which is the shape these exist to expose
+		$this->transactionCount++;
+		if (!$commit) {
+			$this->speculativeCount++;
+			$this->replayedStatementCount += count($statements);
+		}
+
 		$reply = $this->call(
 			$this->transactionFunction,
 			[
@@ -234,6 +264,43 @@ final class CfwSqlClient
 	public function statementCount(): int
 	{
 		return $this->statementCount;
+	}
+
+	/**
+	 * Returns how many host transactions have been opened.
+	 *
+	 * @return int
+	 *   The count, committing and speculative together.
+	 */
+	public function transactionCount(): int
+	{
+		return $this->transactionCount;
+	}
+
+	/**
+	 * Returns how many transactions were speculative rather than committed.
+	 *
+	 * @return int
+	 *   The count; always at most transactionCount().
+	 */
+	public function speculativeCount(): int
+	{
+		return $this->speculativeCount;
+	}
+
+	/**
+	 * Returns how many statements were re-sent inside speculative replays.
+	 *
+	 * This is the O(W*R) term, made observable. A dirty read re-sends the whole buffer, so
+	 * this rises quadratically in a write-then-read transaction while statementCount() rises
+	 * linearly -- which is why the two are separate numbers rather than one.
+	 *
+	 * @return int
+	 *   The count.
+	 */
+	public function replayedStatementCount(): int
+	{
+		return $this->replayedStatementCount;
 	}
 
 	/**
