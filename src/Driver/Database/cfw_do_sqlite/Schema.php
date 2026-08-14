@@ -28,6 +28,13 @@ use Drupal\sqlite\Driver\Database\sqlite\Schema as SqliteDriverSchema;
  * taxonomy term matching and LIKE, for non-ASCII text only. It is a documented
  * product limitation rather than something the driver can fix, because the fix
  * lives in the runtime's SQLite build.
+ *
+ * ONE MORE THING CANNOT BE INHERITED, and it is the table prefix. Every other
+ * prefixed method here works unchanged, because getPrefixInfo() puts the prefix
+ * on the front of the table name and this driver's prefix is exactly that. Only
+ * findTables() reads the prefix the other way round - the core sqlite version
+ * assumes a prefixed table lives in its own ATTACHed schema and therefore carries
+ * no prefix in sqlite_master, which is false here and would return nothing at all.
  */
 class Schema extends SqliteDriverSchema
 {
