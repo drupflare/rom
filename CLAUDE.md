@@ -29,7 +29,7 @@ rename it as tidying. If it is ever renamed it is a major version and both repos
 on the edge**. The worker packs it into `assets/driver.json`, which the Durable Object mounts.
 
 **This repo's suite is the authority on behaviour**: `DRUPAL_ROOT=<worker>/drupal-src php
-tests/run-driver-suite.php` - 132 assertions. A change made only in the worker is untested code on
+tests/run-driver-suite.php` - 188 assertions. A change made only in the worker is untested code on
 the edge. The worker's `bun run check:sync` covers both copies plus the packed artifact; run its
 `bun run assets:driver` after any change here.
 
@@ -64,6 +64,40 @@ this project's own unverified claim.
 The integer limit is the one that **cannot** be fixed here. Document it, refuse loudly, do not
 paper over it.
 
+## Table prefixes are name-mangled; only a period is refused
+
+This reverses what this file and the README used to say. A non-empty prefix WORKS: the base
+`Drupal\Core\Database\Connection::setPrefix()` folds it into the identifier, so `{node}` becomes
+`"site1_node"`, and calling the grandparent constructor is what selects that mechanism over core
+sqlite's `ATTACH DATABASE` one. "The architecture does not want it" was never an argument - the
+goal is Drupal compatibility, so the architecture moves.
+
+- **`Schema::findTables()` is the ONE method that had to be replaced**, and it failed _silently_:
+  the core sqlite version matches the expression against the bare `sqlite_master` name, because
+  there a prefixed table is in its own attached schema. Here the name carries the prefix, so
+  inheriting it returns an empty result rather than an error. Everything else - `getPrefixInfo()`,
+  `createTable`, `renameTable`, index create/exists/drop, `getFullQualifiedTableName()` - is
+  correct as inherited, because they all put the prefix on the front of the table name.
+- **A period is the one character that cannot work.** Core allows `[A-Za-z0-9_.]` because every
+  other driver reads a period as a schema selector. `Connection::PREFIX_PATTERN` drops it, the
+  constructor refuses it by name, and `Install\Tasks::validateDatabaseSettings()` refuses it at
+  the install form so the installer reports instead of fataling.
+- Isolation is asserted over **one shared `FakeHost`**. A fixture per connection would make it
+  trivially true and prove nothing.
+
+## The replay cache is real but small, and the README says which half it misses
+
+`TransactionBuffer` keeps every per-statement result a replay hands back, and every replay
+populates it. Sound because a replay starts from the same committed state and runs `buffer[0..k]`
+in order, so result _i_ depends only on the first _i+1_ entries - which never change while
+buffered. A savepoint rollback is the only shrink, so `rollbackTo()` drops the discarded tail.
+
+**It removes repeated resolutions, not the term.** `Insert::execute()` asks for `lastInsertId()`
+straight after buffering each row, and the newest index is by definition uncached, so the
+alternating write-then-read pair is still `N(N+1)` and the suite still asserts **12 for N=3**. Do
+not write that the cache fixed the installer; what would fix it is fewer resolutions, not fewer
+repeats.
+
 ## Rules
 
 - **Refuse with a named reason rather than truncating.** A silently truncated value is
@@ -72,7 +106,7 @@ paper over it.
 - **Never widen a limit because a test passes.** These came from a deployed object. Re-measure on a
   deployed worker if you think one is wrong.
 - Transactions are a buffer plus atomic replay via `execTxn()`. Commit, speculative read and
-  rollback are all verified by the suite; do not change the buffering without re-running all 132.
+  rollback are all verified by the suite; do not change the buffering without re-running all 188.
 - Never call `Database::startLog()` when benchmarking - it changes what you are measuring.
 
 ## Formatting: prettier owns layout, phpcs owns meaning, phpstan owns types
@@ -109,13 +143,35 @@ XML comment is invalid.
   `missingType.return` annotations.
 - Comments: lowercase, terse, one line, no trailing period, only where the WHY is non-obvious.
 - Default branch is `master`. Every workflow filters on it so a push and its PR do not double-fire.
-- `PUBLISHING.md` has the Packagist steps; `^1.0` needs a `v1.0.0` tag before it resolves from a
+- The driver suite is **188 assertions** and the count is the release note: it went 101 -> 120 ->
+  132 -> 147 -> 188. Never tag on a lower number; a drop means the suite was weakened.
+- **Four cost counters, not one.** `statementCount()` is bridge crossings; `transactionCount()` is
+  host BEGINs; `speculativeCount()` is the rolled-back subset; `replayedStatementCount()` is what
+  the host executed inside them. The last one is the only one that can see the O(W*R) term, because
+  a replay is ONE bridge crossing however many statements run inside it. Each is asserted against
+  `FakeHost`'s own count of the same thing, which is the point - a counter asserted against itself
+  proves nothing.
+- **A buffered insert costs a speculative replay by itself**, for `lastInsertId()`. Measured while
+  writing those assertions, after a first draft predicted otherwise: a write-then-read pair is 2
+  speculative transactions, so N pairs replay N(N+1) statements rather than N(N+1)/2.
+- the Packagist steps are maintainer-only; `^1.0` needs a `v1.0.0` tag before it resolves from a
   path repository.
+- **Packagist publishes from the webhook, so `release.yml` has no Packagist step and must not get
+  one.** The `POST /api/update-package` nudge was removed on 2026-08-12; a pre-submission 403 came
+  back as `curl -fsS` exit 22 and killed the release job for a call that changed nothing. No
+  `PACKAGIST_USERNAME` / `PACKAGIST_TOKEN` secret exists or is needed.
+- **The nightly lives on `build.yml`, not `release.yml`, and it publishes nothing.** It exists for
+  one reason: `composer.lock` is uncommitted and `renovate.json` disables `drupal/core`, so a new
+  Drupal 11.x can break this driver with no commit to trigger CI and no renovate PR. The old
+  version was gated on "did `master` move in the last 24 hours", which made it a strict subset of
+  the push gate - it could only run on commits the push gate had already tested, and skipped the
+  idle-tree case that is the entire point. The `nightly-<date>-<sha>` prerelease went with it:
+  `dev-master` already resolves to the tip.
 
 ## PHP versions: 8.5 works here, and that says nothing about the wasm side
 
 `composer.json` requires `php: ^8.3`, which already permits 8.5. **Verified rather than assumed:** the
-132-assertion driver suite passes on **PHP 8.5.7**, and Drupal core requires `>=8.3.0` with no upper
+188-assertion driver suite passes on **PHP 8.5.7**, and Drupal core requires `>=8.3.0` with no upper
 bound. CI matrices in `build.yml` cover `8.3`, `8.4`, `8.5`.
 
 That was cheap because this module is a database driver: pure PHP, one extension (`ext-json`), no
