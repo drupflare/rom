@@ -10,12 +10,9 @@ on:
         type: string
         description: 'Suffix to append to the version'
         default: ''
-  schedule:
-    - cron: '20 4 * * *'
 
 jobs:
   release:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     permissions:
@@ -33,10 +30,12 @@ jobs:
             echo "package.json has no version field; the tag would be 'vundefined'." >&2
             exit 1
           fi
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
       - name: Retrieve Latest Tag
         id: latest_tag
-        run: echo "LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo '')" >> $GITHUB_ENV
+        run: |
+          # git describe exits 1 with no tags, which is every FIRST release; tolerate it
+          echo "LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo '')" >> "$GITHUB_ENV"
       - name: Generate Changelog
         if: ${{ github.event.inputs.changelog == '' }}
         id: changelog
@@ -57,187 +56,3 @@ jobs:
             ${{ steps.changelog.outputs.changelog || github.event.inputs.changelog }}
           draft: false
           prerelease: ${{ github.ref_name != 'master' }}
-      - name: Tell Packagist About the Tag
-        env:
-          PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
-          PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
-          # derived, not hardcoded: this repo was `drupal-do` hours before its first release, and a
-          # hardcoded URL goes stale silently on the next rename
-          REPO_URL: https://github.com/${{ github.repository }}
-        run: |
-          if [ -z "$PACKAGIST_USERNAME" ] || [ -z "$PACKAGIST_TOKEN" ]; then
-            echo "No Packagist credentials configured; relying on the GitHub push hook."
-            exit 0
-          fi
-          # This call is a NUDGE, not the delivery mechanism -- Packagist's GitHub webhook is what
-          # actually publishes a tag. So it must never fail the release. `curl -fsS` did exactly
-          # that: a 403 became exit 22 and killed the whole job.
-          code=$(curl -sS -o /tmp/packagist.out -w '%{http_code}' -XPOST \
-            -H 'content-type:application/json' \
-            "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_TOKEN}" \
-            -d "{\"repository\":{\"url\":\"${REPO_URL}\"}}" || echo 000)
-          case "$code" in
-            20*)
-              echo "Packagist accepted the update ($code)."
-              ;;
-            403)
-              echo "Packagist returned 403 for ${REPO_URL}. Causes, in order of likelihood:"
-              echo "  1. the package is not submitted yet -- update-package only updates an"
-              echo "     EXISTING package, so the first publish must be done at"
-              echo "     https://packagist.org/packages/submit"
-              echo "  2. PACKAGIST_USERNAME must be the ACCOUNT that owns the package, not the"
-              echo "     vendor name from the package title"
-              echo "  3. the repository URL must match the one Packagist has registered, exactly"
-              echo "Not failing the release: the GitHub push hook delivers the tag regardless."
-              ;;
-            *)
-              echo "Packagist returned $code; not failing the release."
-              cat /tmp/packagist.out 2>/dev/null || true
-              ;;
-          esac
-
-  nightly-gate:
-    if: github.event_name == 'schedule'
-    name: Nightly Gate
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    permissions:
-      contents: read
-
-    outputs:
-      fresh: ${{ steps.fresh.outputs.fresh }}
-      assertions: ${{ steps.suite.outputs.assertions }}
-
-    env:
-      DRUPAL_VERSION: 11.4.5
-
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Check for Commits in the Last Day
-        id: fresh
-        run: |
-          if [ -z "$(git log --since='24 hours ago' --format=%H)" ]; then
-            echo "No commits in the last 24 hours; nothing to publish."
-            echo "fresh=false" >> $GITHUB_OUTPUT
-          else
-            echo "fresh=true" >> $GITHUB_OUTPUT
-          fi
-      - name: Set up PHP
-        if: steps.fresh.outputs.fresh == 'true'
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          extensions: pdo_sqlite, sqlite3, json, mbstring, dom, xml
-          coverage: none
-      - name: Install Composer Dependencies
-        if: steps.fresh.outputs.fresh == 'true'
-        run: composer install --no-interaction --no-progress
-      - name: Run PHP Lint
-        if: steps.fresh.outputs.fresh == 'true'
-        run: php tests/lint.php
-      - name: Check Coding Standards
-        if: steps.fresh.outputs.fresh == 'true'
-        run: ./vendor/bin/phpcs
-      - name: Run PHPStan
-        if: steps.fresh.outputs.fresh == 'true'
-        run: ./vendor/bin/phpstan analyse --memory-limit=1G --no-progress
-      - name: Cache Drupal Tree
-        if: steps.fresh.outputs.fresh == 'true'
-        id: drupal
-        uses: actions/cache@v6
-        with:
-          path: drupal-root
-          key: drupal-${{ env.DRUPAL_VERSION }}
-      - name: Fetch Drupal Tree
-        if: steps.fresh.outputs.fresh == 'true' && steps.drupal.outputs.cache-hit != 'true'
-        run: |
-          curl -fsSL --retry 3 "https://ftp.drupal.org/files/projects/drupal-${DRUPAL_VERSION}.tar.gz" -o /tmp/drupal.tar.gz
-          mkdir -p drupal-root
-          tar -xzf /tmp/drupal.tar.gz --strip-components=1 -C drupal-root
-      - name: Run Driver Suite
-        if: steps.fresh.outputs.fresh == 'true'
-        id: suite
-        run: |
-          php -d opcache.enable_cli=0 tests/run-driver-suite.php ./drupal-root | tee /tmp/suite.log
-          COUNT=$(grep -oE '[0-9]+ passed' /tmp/suite.log | grep -oE '[0-9]+')
-          echo "assertions=$COUNT" >> $GITHUB_OUTPUT
-
-  nightly-publish:
-    if: ${{ github.event_name == 'schedule' && needs.nightly-gate.outputs.fresh == 'true' }}
-    name: Nightly Publish
-    runs-on: ubuntu-latest
-    needs: nightly-gate
-
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v7
-      - name: Build the Nightly Identity
-        run: |
-          SHORT=$(git rev-parse --short HEAD)
-          echo "NIGHTLY_TAG=nightly-$(date -u +%Y%m%d)-${SHORT}" >> $GITHUB_ENV
-          echo "SHORT_SHA=${SHORT}" >> $GITHUB_ENV
-      - name: Create Nightly Prerelease
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ env.NIGHTLY_TAG }}
-          name: 'nightly ${{ env.SHORT_SHA }}'
-          body: |
-            Unreleased build of `master`.
-
-            - Commit: `${{ github.sha }}`
-            - Driver suite: ${{ needs.nightly-gate.outputs.assertions }} assertions passed
-
-            This tag is not a Composer version, so Packagist ignores it. To install this
-            code, require `dev-master`, which now resolves to the commit above.
-          draft: false
-          prerelease: true
-          make_latest: false
-      - name: Refresh dev-master on Packagist
-        env:
-          PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
-          PACKAGIST_TOKEN: ${{ secrets.PACKAGIST_TOKEN }}
-          # derived, not hardcoded: this repo was `drupal-do` hours before its first release, and a
-          # hardcoded URL goes stale silently on the next rename
-          REPO_URL: https://github.com/${{ github.repository }}
-        run: |
-          if [ -z "$PACKAGIST_USERNAME" ] || [ -z "$PACKAGIST_TOKEN" ]; then
-            echo "No Packagist credentials configured; relying on the GitHub push hook."
-            exit 0
-          fi
-          # This call is a NUDGE, not the delivery mechanism -- Packagist's GitHub webhook is what
-          # actually publishes a tag. So it must never fail the release. `curl -fsS` did exactly
-          # that: a 403 became exit 22 and killed the whole job.
-          code=$(curl -sS -o /tmp/packagist.out -w '%{http_code}' -XPOST \
-            -H 'content-type:application/json' \
-            "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_TOKEN}" \
-            -d "{\"repository\":{\"url\":\"${REPO_URL}\"}}" || echo 000)
-          case "$code" in
-            20*)
-              echo "Packagist accepted the update ($code)."
-              ;;
-            403)
-              echo "Packagist returned 403 for ${REPO_URL}. Causes, in order of likelihood:"
-              echo "  1. the package is not submitted yet -- update-package only updates an"
-              echo "     EXISTING package, so the first publish must be done at"
-              echo "     https://packagist.org/packages/submit"
-              echo "  2. PACKAGIST_USERNAME must be the ACCOUNT that owns the package, not the"
-              echo "     vendor name from the package title"
-              echo "  3. the repository URL must match the one Packagist has registered, exactly"
-              echo "Not failing the release: the GitHub push hook delivers the tag regardless."
-              ;;
-            *)
-              echo "Packagist returned $code; not failing the release."
-              cat /tmp/packagist.out 2>/dev/null || true
-              ;;
-          esac
-      - name: Nightly to Job Summary
-        run: |
-          echo "## Nightly ${{ env.SHORT_SHA }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Tag: \`${{ env.NIGHTLY_TAG }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- Assertions: ${{ needs.nightly-gate.outputs.assertions }}" >> $GITHUB_STEP_SUMMARY
