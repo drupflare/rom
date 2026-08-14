@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="en" id="top-of-site">
+	<head>
+		<meta name="viewport" content="width=device-width,initial-scale=1">
+		<meta charset="utf-8"/>
+		<title>
+							drupflare/rom
+					</title>
+		<meta name="author" content=""/>
+		<meta name="description" content=""/>
+		<base href="../">
+
+		<link href="resources/css/bootstrap.min.css" rel="stylesheet" media="all"/>
+		<link href="resources/css/bootstrap-responsive.min.css" rel="stylesheet" media="all"/>
+		<link href="resources/css/style.css" rel="stylesheet" media="all"/>
+		<link href="resources/css/prism.min.css" rel="stylesheet" media="all"/>
+		<link href="resources/font/css/all.min.css" rel="stylesheet" media="all"/>
+		
+<link rel="apple-touch-icon" sizes="72x72" href="resources/images/apple-touch-icon-72x72.png"/>
+		<link rel="icon" type="image/png" href="../favicon.png"/>
+		<link rel="shortcut icon" href="../favicon.ico"/>
+		<link rel="apple-touch-icon" href="../favicon.png"/>
+	</head>
+	<body>
+
+		<nav class="navbar navbar-fixed-top navbar-inverse">
+			<div class="navbar-inner">
+				<div class="container">
+					<a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+						<i class="fa-solid fa-bars"></i>
+					</a>
+					<a class="brand" href="index.html">drupflare/rom</a>
+
+					<div class="nav-collapse navbar-responsive-collapse collapse">
+						<ul class="nav pull-right">
+															<li class="dropdown" id="api-menu">
+									<a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-labelledby="api-menu">
+										API Documentation
+										<b class="caret"></b>
+									</a>
+									<ul class="dropdown-menu" role="menu" aria-labelledby="api-menu">
+																					<li><a href="namespaces/drupal.html"><abbr title="\Drupal">Drupal</abbr></a></li>
+																			</ul>
+								</li>
+																					<li class="dropdown">
+								<a href="#" class="dropdown-toggle" data-toggle="dropdown">
+									Reports
+									<b class="caret"></b>
+								</a>
+								<ul class="dropdown-menu" role="menu" aria-labelledby="dropdownMenu">
+									<li>
+										<a href="reports/errors.html">
+																																																																																																																																																																																																																																																																																																																																												<i class="fa-solid fa-bug"></i>&#160;Errors
+											<span class="label label-important pull-right">0</span>
+										</a>
+									</li>
+									<li>
+										<a href="reports/markers.html">
+																																																																																																																																																																																																																																																																																																																																												<i class="fa-solid fa-location-dot"></i>&#160;&#160;Markers
+											<span class="label label-warning pull-right">0</span>
+										</a>
+									</li>
+									<li>
+										<a href="reports/deprecated.html">
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																															<i class="fa-solid fa-file-circle-xmark"></i>&#160;Deprecated
+											<span class="label label-info pull-right">0</span>
+										</a>
+									</li>
+								</ul>
+							</li>
+						</ul>
+					</div>
+				</div>
+			</div>
+			<div class="go_to_top">
+				<a href="#top-of-site" style="color: inherit">Back To Top&#160;&#160;<i class="fa-solid fa-chevron-up"></i></a>
+			</div>
+		</nav>
+
+		<div id="___" class="container-fluid"> 	<section class="row-fluid">
+		<div class="span2 sidebar">
+								<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle " data-toggle="collapse" data-target="#namespace-961667351"></a>
+								<a href="namespaces/default.html" style="margin-left: 30px; padding-left: 0">\</a>
+			</div>
+			<div id="namespace-961667351" class="accordion-body collapse in">
+				<div class="accordion-inner">
+
+													<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-721853506"></a>
+								<a href="namespaces/drupal.html" style="margin-left: 30px; padding-left: 0">Drupal</a>
+			</div>
+			<div id="namespace-721853506" class="accordion-body collapse ">
+				<div class="accordion-inner">
+
+													<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1822907025"></a>
+								<a href="namespaces/drupal-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
+			</div>
+			<div id="namespace-1822907025" class="accordion-body collapse ">
+				<div class="accordion-inner">
+
+													<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-367475266"></a>
+								<a href="namespaces/drupal-cfw-do-sqlite-driver.html" style="margin-left: 30px; padding-left: 0">Driver</a>
+			</div>
+			<div id="namespace-367475266" class="accordion-body collapse ">
+				<div class="accordion-inner">
+
+													<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-877890834"></a>
+								<a href="namespaces/drupal-cfw-do-sqlite-driver-database.html" style="margin-left: 30px; padding-left: 0">Database</a>
+			</div>
+			<div id="namespace-877890834" class="accordion-body collapse ">
+				<div class="accordion-inner">
+
+													<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1249485978"></a>
+								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
+			</div>
+			<div id="namespace-1249485978" class="accordion-body collapse ">
+				<div class="accordion-inner">
+
+													<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1215541688"></a>
+								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite-install.html" style="margin-left: 30px; padding-left: 0">Install</a>
+			</div>
+			<div id="namespace-1215541688" class="accordion-body collapse ">
+				<div class="accordion-inner">
+
+					
+					<ul>
+																									<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Install-Tasks.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Install\Tasks">Tasks</abbr></a></li>
+											</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+					
+					<ul>
+																									<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-CfwSqlClient.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\CfwSqlClient">CfwSqlClient</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Connection.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection">Connection</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-ExceptionHandler.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\ExceptionHandler">ExceptionHandler</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-HostBridgeException.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\HostBridgeException">HostBridgeException</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Schema.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Schema">Schema</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-SqlAnalyzer.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\SqlAnalyzer">SqlAnalyzer</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-SqlErrorException.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\SqlErrorException">SqlErrorException</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement">Statement</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer">TransactionBuffer</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionManager.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionManager">TransactionManager</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-UncommittedStateException.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\UncommittedStateException">UncommittedStateException</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Upsert.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Upsert">Upsert</abbr></a></li>
+											</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+					
+					<ul>
+																							</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+					
+					<ul>
+																							</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+					
+					<ul>
+																							</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+					
+					<ul>
+																							</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+					
+					<ul>
+																							</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+		</div>
+	</section>
+	<section class="row-fluid">
+		<div class="span10 offset2">
+			<div class="row-fluid">
+				<div class="span8 content class">
+					<nav>
+												<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite">cfw_do_sqlite</abbr></a>
+						<i class="fa-solid fa-turn-up"></i>
+											</nav>
+					
+					<h1>
+						<small>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite</small>
+						TransactionBuffer</h1>
+					<p>
+						<em>The ordered list of writes withheld while a Drupal transaction is open.</em>
+					</p>
+					<p>Rolling back is discarding the buffer, committing is replaying it, and a
+savepoint is an index into it. That is the whole of the transaction mapping:
+ctx.storage.sql has no BEGIN and no SAVEPOINT, so the only place the ordering
+can live is here.</p>
+<p>The dirty-table set is recomputed on truncation rather than tracked
+incrementally, because a rollback to a savepoint has to un-dirty whatever
+only the discarded statements had written.</p>
+
+																																<section id="summary">
+						<h2>Summary</h2>
+						<section class="row-fluid heading">
+							<section class="span4">
+								<a href="#methods">Methods</a>
+							</section>
+							<section class="span4">
+								<a href="#properties">Properties</a>
+							</section>
+							<section class="span4">
+								<a href="#constants">Constants</a>
+							</section>
+						</section>
+						<section class="row-fluid public">
+							<section class="span4">
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																							
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_add" class="">add</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_count" class="">count</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_isEmpty" class="">isEmpty</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_discardFailed" class="">discardFailed</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_sqlAt" class="">sqlAt</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_statements" class="">statements</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_lastIndex" class="">lastIndex</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_statementsUpTo" class="">statementsUpTo</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_rememberResults" class="">rememberResults</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_liveIndexesUpTo" class="">liveIndexesUpTo</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_resolvedResult" class="">resolvedResult</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_touches" class="">touches</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_hasInsert" class="">hasInsert</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_lastInsertIndex" class="">lastInsertIndex</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_mark" class="">mark</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_rollbackTo" class="">rollbackTo</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_release" class="">release</a><br/>
+																								</section>
+							<section class="span4">
+																																																																																																																						
+																	<em>No public properties found</em>
+															</section>
+							<section class="span4">
+																
+																	<em>No public constants found</em>
+															</section>
+						</section>
+						<section class="row-fluid protected">
+							<section class="span4">
+																																																																																																																																																																																																																																																																																																																																																																				
+																	<em>No protected methods found</em>
+															</section>
+							<section class="span4">
+																																																																																																																						
+																	<em>No protected properties found</em>
+															</section>
+							<section class="span4">
+																
+																	<em>No protected constants found</em>
+															</section>
+						</section>
+						<section class="row-fluid private">
+							<section class="span4">
+																																																																																																																																																																																																																																																																																																																																																																																																																													
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_slice" class="">slice</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_markDirty" class="">markDirty</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#method_recomputeDirtyTables" class="">recomputeDirtyTables</a><br/>
+																								</section>
+							<section class="span4">
+																																																																																																																																																																																																																																								
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#property_statements" class="">statements</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#property_savepoints" class="">savepoints</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#property_dirtyTables" class="">dirtyTables</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#property_allDirty" class="">allDirty</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#property_lastInsertIndex" class="">lastInsertIndex</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html#property_resolved" class="">resolved</a><br/>
+																								</section>
+							<section class="span4">
+																
+																	<em>No private constants found</em>
+															</section>
+						</section>
+					</section>
+				</div>
+				<aside class="span4 detailsbar">
+																<span class="label label-info">final</span>
+					
+					
+					<dl>
+						<dt>File</dt>
+						<dd>
+							<a href="files/src-driver-database-cfw-do-sqlite-transactionbuffer.html">
+								<div class="path-wrapper">src/Driver/Database/cfw_do_sqlite/TransactionBuffer.php</div>
+							</a>
+						</dd>
+													<dt>Package</dt>
+							<dd>
+								<div class="namespace-wrapper">Application</div>
+							</dd>
+												<dt>Class hierarchy</dt>
+						<dd class="hierarchy">
+																																				<div class="namespace-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div>
+						</dd>
+
+						
+						
+												
+																																																																																																																																																																																															
+																	</dl>
+					<h2>Tags</h2>
+					<table class="table table-condensed">
+																											<tr>
+									<th>
+										package
+									</th>
+									<td>
+																																<p>Application</p>
+
+																			</td>
+								</tr>
+															<tr>
+									<th>
+										uses
+									</th>
+									<td>
+																			</td>
+								</tr>
+															<tr>
+									<th>
+										method
+									</th>
+									<td>
+																			</td>
+								</tr>
+															<tr>
+									<th>
+										property
+									</th>
+									<td>
+																			</td>
+								</tr>
+															<tr>
+									<th>
+										property-read
+									</th>
+									<td>
+																			</td>
+								</tr>
+															<tr>
+									<th>
+										property-write
+									</th>
+									<td>
+																			</td>
+								</tr>
+																		</table>
+				</aside>
+			</div>
+
+						
+										<a id="properties" name="properties"></a>
+				<div class="row-fluid">
+					<div class="span8 content class">
+						<h2>Properties</h2>
+					</div>
+					<aside class="span4 detailsbar"></aside>
+				</div>
+
+																																																																																																																																			    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="property_statements" name="property_statements" class="anchor"></a>
+            <article class="property">
+                <h3 class="private ">$statements</h3>
+                <pre class="signature">$statements : array<int,array{sql: string, params: array, tables: string[], failed: bool}></pre>
+                <p><em>Buffered statements, in issue order.</em></p>
+                <p>A failed entry keeps its slot so that every index already handed out stays
+valid; it is simply never replayed again. See discardFailed().</p>
+
+
+                                <h4>Type</h4>
+                array&lt;int, array{sql: string, params: array, tables: string[], failed: bool}&gt;
+                &mdash;                             </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas-solid fa-arrow-down"></i></h1>
+                        <dl>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="property_savepoints" name="property_savepoints" class="anchor"></a>
+            <article class="property">
+                <h3 class="private ">$savepoints</h3>
+                <pre class="signature">$savepoints : array<string,int></pre>
+                <p><em>Savepoint name to the buffer length when it was created.</em></p>
+                
+
+                                <h4>Type</h4>
+                array&lt;string, int&gt;
+                &mdash;                             </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas-solid fa-arrow-down"></i></h1>
+                        <dl>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="property_dirtyTables" name="property_dirtyTables" class="anchor"></a>
+            <article class="property">
+                <h3 class="private ">$dirtyTables</h3>
+                <pre class="signature">$dirtyTables : array<string,true></pre>
+                <p><em>Lower-cased names of tables the buffered statements write.</em></p>
+                
+
+                                <h4>Type</h4>
+                array&lt;string, true&gt;
+                &mdash;                             </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas-solid fa-arrow-down"></i></h1>
+                        <dl>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="property_allDirty" name="property_allDirty" class="anchor"></a>
+            <article class="property">
+                <h3 class="private ">$allDirty</h3>
+                <pre class="signature">$allDirty : bool</pre>
+                <p><em>Whether some buffered statement&#039;s target could not be determined.</em></p>
+                
+
+                                <h4>Type</h4>
+                bool
+                                            </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas-solid fa-arrow-down"></i></h1>
+                        <dl>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="property_lastInsertIndex" name="property_lastInsertIndex" class="anchor"></a>
+            <article class="property">
+                <h3 class="private ">$lastInsertIndex</h3>
+                <pre class="signature">$lastInsertIndex : ?int</pre>
+                <p><em>Index of the last buffered statement that inserted rows, if any.</em></p>
+                
+
+                                <h4>Type</h4>
+                int|null
+                                            </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas-solid fa-arrow-down"></i></h1>
+                        <dl>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="property_resolved" name="property_resolved" class="anchor"></a>
+            <article class="property">
+                <h3 class="private ">$resolved</h3>
+                <pre class="signature">$resolved : array<int,array{lastInsertId: string, changes: int}></pre>
+                <p><em>Per-index results learned from a replay, keyed by buffer index.</em></p>
+                <p>A replay always starts from the same committed state and runs statements 0..k in
+order, so the result of statement i is a function of the buffer's first i+1 entries
+and of nothing else. Those entries never change while they are buffered - a buffer
+only grows, except at a savepoint rollback, which truncates and is handled in
+rollbackTo(). So an answer learned once stays correct until the transaction ends.</p>
+
+
+                                <h4>Type</h4>
+                array&lt;int, array{lastInsertId: string, changes: int}&gt;
+                &mdash;                             </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas-solid fa-arrow-down"></i></h1>
+                        <dl>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+												
+										<a id="methods" name="methods"></a>
+				<div class="row-fluid">
+					<div class="span8 content class">
+						<h2>Methods</h2>
+					</div>
+					<aside class="span4 detailsbar"></aside>
+				</div>
+
+															    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_add" name="method_add" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">add()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">add(string  <span class="argument">$sql</span>, array  <span class="argument">$params</span>, string[]  <span class="argument">$tables</span>) : int</pre>
+                <p><em>Appends a statement.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$sql </td>
+                                <td><p>The statement.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>array</td>
+                                <td>$params </td>
+                                <td><p>Its parameters, ready for the host.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>string[]</td>
+                                <td>$tables </td>
+                                <td><p>The tables it writes, from SqlAnalyzer::writtenTables().</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    int
+                                            &mdash; <p>The index of the buffered statement.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_count" name="method_count" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">count()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">count() : int</pre>
+                <p><em>Returns the number of statements that would be replayed.</em></p>
+                
+
+                
+                
+                                    <h4>Returns</h4>
+                    int
+                                            &mdash; <p>The count, excluding statements the engine rejected.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_isEmpty" name="method_isEmpty" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">isEmpty()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">isEmpty() : bool</pre>
+                <p><em>Returns whether nothing would be replayed.</em></p>
+                
+
+                
+                
+                                    <h4>Returns</h4>
+                    bool
+                                            &mdash; <p>TRUE when the buffer holds no statement the engine has accepted.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_discardFailed" name="method_discardFailed" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">discardFailed()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">discardFailed(int  <span class="argument">$index</span>) : void</pre>
+                <p><em>Drops a statement the engine rejected, keeping the transaction usable.</em></p>
+                <p>A buffered write is reported as successful before anything has run, so its
+rejection is only discovered by a later replay. On a real connection that
+statement would have failed where it was issued and left no trace, and the
+transaction would have carried on - Drupal's own &quot;write, catch, create the
+table, continue&quot; idiom depends on exactly that. Keeping the rejected
+statement instead poisons every later replay and the commit with it.</p>
+<p>The slot is kept rather than removed so that a buffer index already handed
+to a Statement still names the same statement.</p>
+
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>int</td>
+                                <td>$index </td>
+                                <td><p>The buffer index of the rejected statement.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                                    <h4>Throws</h4>
+                    <dl>
+                                                    <dt>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\UncommittedStateException</dt>
+                            <dd><p>If no statement is buffered at that index.</p>
+</dd>
+                                                                    </dl>
+                
+                                    <h4>Returns</h4>
+                    void
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_sqlAt" name="method_sqlAt" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">sqlAt()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">sqlAt(int  <span class="argument">$index</span>) : string</pre>
+                <p><em>Returns the SQL of one buffered statement.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>int</td>
+                                <td>$index </td>
+                                <td><p>The buffer index.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    string
+                                            &mdash; <p>The statement, or an empty string when the index is unknown.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_statements" name="method_statements" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">statements()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">statements() : array&lt;int,array{sql: string, params: array}&gt;</pre>
+                <p><em>Returns every buffered statement, ready to hand to the host.</em></p>
+                
+
+                
+                
+                                    <h4>Returns</h4>
+                    array<int,array{sql: string, params: array}>
+                                            &mdash; <p>The statements, in issue order.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_lastIndex" name="method_lastIndex" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">lastIndex()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">lastIndex() : int</pre>
+                <p><em>Returns the highest buffer index in use.</em></p>
+                
+
+                
+                
+                                    <h4>Returns</h4>
+                    int
+                                            &mdash; <p>The index, or -1 when nothing has been buffered. Counts discarded slots,
+because they still occupy an index.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_statementsUpTo" name="method_statementsUpTo" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">statementsUpTo()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">statementsUpTo(int  <span class="argument">$index</span>) : array&lt;int,array{sql: string, params: array}&gt;</pre>
+                <p><em>Returns the buffered statements up to and including one index.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>int</td>
+                                <td>$index </td>
+                                <td><p>The last index to include.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    array<int,array{sql: string, params: array}>
+                                            &mdash; <p>The statements, in issue order.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_rememberResults" name="method_rememberResults" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">rememberResults()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">rememberResults(array<int,array{lastInsertId?: string, changes?: int}>  <span class="argument">$results</span>, int|null  <span class="argument">$upTo = null</span>) : void</pre>
+                <p><em>Records what a replay learned about each buffered statement.</em></p>
+                <p>Every speculative replay hands back one result per statement it ran, whether it was
+opened to resolve an insert id, to resolve a row count, or to answer a dirty read.
+The read case is the valuable one: it replays the WHOLE buffer, so it answers every
+outstanding id and row count as a side effect of work already being paid for.</p>
+
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>array<int,array{lastInsertId?: string, changes?: int}></td>
+                                <td>$results </td>
+                                <td><p>Host results, keyed by their POSITION in the replay rather than by buffer
+index; a discarded statement is not sent, so the two only agree while
+nothing has been discarded. Anything past the end is ignored rather than
+trusted.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>int|null</td>
+                                <td>$upTo </td>
+                                <td><p>The buffer index the replay ran to, or NULL when it ran the whole buffer.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    void
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_liveIndexesUpTo" name="method_liveIndexesUpTo" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">liveIndexesUpTo()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">liveIndexesUpTo(int  <span class="argument">$index</span>) : array&lt;int,int&gt;</pre>
+                <p><em>Returns the buffer indexes a replay up to one index would send, in order.</em></p>
+                <p>The list is positional: element 0 is the first statement the host would run,
+which is what makes it the map from a host result back to a buffer index.</p>
+
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>int</td>
+                                <td>$index </td>
+                                <td><p>The last buffer index to include; a negative value yields an empty list.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    array<int,int>
+                                            &mdash; <p>The buffer indexes, keyed by their position in the replay.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_resolvedResult" name="method_resolvedResult" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">resolvedResult()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">resolvedResult(int  <span class="argument">$index</span>) : array{lastInsertId: string, changes: int}|null</pre>
+                <p><em>Returns what a previous replay learned about one buffered statement.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>int</td>
+                                <td>$index </td>
+                                <td><p>The buffer index.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    array{lastInsertId: string, changes: int}|null
+                                            &mdash; <p>The result, or NULL when no replay has covered that statement yet.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_touches" name="method_touches" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">touches()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">touches(string[]  <span class="argument">$tables</span>) : bool</pre>
+                <p><em>Returns whether any of the given tables has a buffered write.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string[]</td>
+                                <td>$tables </td>
+                                <td><p>Lower-cased table names, from SqlAnalyzer::readTables().</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    bool
+                                            &mdash; <p>TRUE when a read of those tables could observe buffered state.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_hasInsert" name="method_hasInsert" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">hasInsert()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">hasInsert() : bool</pre>
+                <p><em>Returns whether the buffer contains an insert.</em></p>
+                
+
+                
+                
+                                    <h4>Returns</h4>
+                    bool
+                                            &mdash; <p>TRUE when a buffered statement would assign a rowid.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_lastInsertIndex" name="method_lastInsertIndex" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">lastInsertIndex()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">lastInsertIndex() : int|null</pre>
+                <p><em>Returns the index of the last buffered insert.</em></p>
+                
+
+                
+                
+                                    <h4>Returns</h4>
+                    int|null
+                                            &mdash; <p>The index, or NULL when nothing buffered inserts.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_mark" name="method_mark" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">mark()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">mark(string  <span class="argument">$name</span>) : void</pre>
+                <p><em>Records a savepoint at the current buffer position.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$name </td>
+                                <td><p>The savepoint name Drupal generated.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    void
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_rollbackTo" name="method_rollbackTo" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">rollbackTo()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">rollbackTo(string  <span class="argument">$name</span>) : void</pre>
+                <p><em>Discards everything written since a savepoint.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$name </td>
+                                <td><p>The savepoint name.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                                    <h4>Throws</h4>
+                    <dl>
+                                                    <dt>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\UncommittedStateException</dt>
+                            <dd><p>If the savepoint is unknown, which would mean the stack is corrupt.</p>
+</dd>
+                                                                    </dl>
+                
+                                    <h4>Returns</h4>
+                    void
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_release" name="method_release" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">release()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">release(string  <span class="argument">$name</span>) : void</pre>
+                <p><em>Forgets a savepoint, keeping the statements written since it was created.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$name </td>
+                                <td><p>The savepoint name.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    void
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																																																																																																																																																																																																																																																																																																																																																																																																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_slice" name="method_slice" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">slice()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">slice(int  <span class="argument">$index</span>) : array&lt;int,array{sql: string, params: array}&gt;</pre>
+                <p><em>Returns the buffered statements up to an index, without bookkeeping.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>int</td>
+                                <td>$index </td>
+                                <td><p>The last index to include; a negative value yields an empty list.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    array<int,array{sql: string, params: array}>
+                                            &mdash; <p>The statements.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_markDirty" name="method_markDirty" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">markDirty()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">markDirty(string[]  <span class="argument">$tables</span>) : void</pre>
+                <p><em>Adds tables to the dirty set.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string[]</td>
+                                <td>$tables </td>
+                                <td><p>The table names a statement writes.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    void
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_recomputeDirtyTables" name="method_recomputeDirtyTables" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">recomputeDirtyTables()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">recomputeDirtyTables() : void</pre>
+                <p><em>Rebuilds the dirty set and the insert marker from what is still buffered.</em></p>
+                
+
+                
+                
+                                    <h4>Returns</h4>
+                    void
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+														</div>
+	</section>
+
+	<div id="source-view" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="source-view-label" aria-hidden="true">
+		<div class="modal-header">
+			<button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+			<h3 id="source-view-label">TransactionBuffer.php</h3>
+		</div>
+		<div class="modal-body">
+			<pre data-src="files/src/Driver/Database/cfw_do_sqlite/TransactionBuffer.php.txt" class="language-php line-numbers"></pre>
+		</div>
+	</div>
+
+			<footer class="row-fluid">
+				<section class="span10 offset2">
+					<section class="row-fluid">
+						<section class="span10 offset1">
+							<section class="row-fluid footer-sections">
+								<section
+									class="span4">
+																		<h1>
+										<i class="fa-solid fa-code"></i>
+									</h1>
+									<div>
+										<ul>
+																							<li><a href="namespaces/drupal.html"><abbr title="\Drupal">Drupal</abbr></a></li>
+																					</ul>
+									</div>
+								</section>
+								<section
+									class="span4">
+																		<h1>
+										<i class="fa-solid fa-project-diagram"></i>
+									</h1>
+									<div>
+										<ul>
+											<li><a href="graphs/class.html">Class Hierarchy Diagram</a></li>
+										</ul>
+									</div>
+								</section>
+								<section
+									class="span4">
+																		<h1>
+										<i class="fa-solid fa-thumbtack"></i>
+									</h1>
+									<div>
+										<ul>
+											<li><a href="reports/errors.html">Errors</a></li>
+											<li><a href="reports/markers.html">Markers</a></li>
+										</ul>
+									</div>
+								</section>
+							</section>
+						</section>
+					</section>
+					<section class="row-fluid">
+						<section class="span10 offset1">
+							<hr/>
+							Documentation is powered by
+							<a href="https://www.phpdoc.org/">phpDocumentor
+							</a>
+							and authored
+							                    on
+							August 14th, 2026 at 02:33.
+						</section>
+					</section>
+				</section>
+			</footer>
+		</div>
+		<script src="resources/js/jquery-1.11.0.min.js"></script>
+		<script src="resources/js/ui/1.10.4/jquery-ui.min.js"></script>
+		<script src="resources/js/jquery.smooth-scroll.js"></script>
+		<script src="resources/js/prism.min.js"></script>
+		<script src="resources/js/bootstrap.js"></script>
+		<script src="resources/js/custom.js"></script>
+			</body>
+</html>

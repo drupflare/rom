@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en" id="top-of-site">
+	<head>
+		<meta name="viewport" content="width=device-width,initial-scale=1">
+		<meta charset="utf-8"/>
+		<title>
+							drupflare/rom
+					</title>
+		<meta name="author" content=""/>
+		<meta name="description" content=""/>
+		<base href="../">
+
+		<link href="resources/css/bootstrap.min.css" rel="stylesheet" media="all"/>
+		<link href="resources/css/bootstrap-responsive.min.css" rel="stylesheet" media="all"/>
+		<link href="resources/css/style.css" rel="stylesheet" media="all"/>
+		<link href="resources/css/prism.min.css" rel="stylesheet" media="all"/>
+		<link href="resources/font/css/all.min.css" rel="stylesheet" media="all"/>
+		
+<link rel="apple-touch-icon" sizes="72x72" href="resources/images/apple-touch-icon-72x72.png"/>
+		<link rel="icon" type="image/png" href="../favicon.png"/>
+		<link rel="shortcut icon" href="../favicon.ico"/>
+		<link rel="apple-touch-icon" href="../favicon.png"/>
+	</head>
+	<body>
+
+		<nav class="navbar navbar-fixed-top navbar-inverse">
+			<div class="navbar-inner">
+				<div class="container">
+					<a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+						<i class="fa-solid fa-bars"></i>
+					</a>
+					<a class="brand" href="index.html">drupflare/rom</a>
+
+					<div class="nav-collapse navbar-responsive-collapse collapse">
+						<ul class="nav pull-right">
+															<li class="dropdown" id="api-menu">
+									<a href="#" class="dropdown-toggle" data-toggle="dropdown" aria-labelledby="api-menu">
+										API Documentation
+										<b class="caret"></b>
+									</a>
+									<ul class="dropdown-menu" role="menu" aria-labelledby="api-menu">
+																					<li><a href="namespaces/drupal.html"><abbr title="\Drupal">Drupal</abbr></a></li>
+																			</ul>
+								</li>
+																					<li class="dropdown">
+								<a href="#" class="dropdown-toggle" data-toggle="dropdown">
+									Reports
+									<b class="caret"></b>
+								</a>
+								<ul class="dropdown-menu" role="menu" aria-labelledby="dropdownMenu">
+									<li>
+										<a href="reports/errors.html">
+																																																																																																																																																																																																																																																																																																																																												<i class="fa-solid fa-bug"></i>&#160;Errors
+											<span class="label label-important pull-right">0</span>
+										</a>
+									</li>
+									<li>
+										<a href="reports/markers.html">
+																																																																																																																																																																																																																																																																																																																																												<i class="fa-solid fa-location-dot"></i>&#160;&#160;Markers
+											<span class="label label-warning pull-right">0</span>
+										</a>
+									</li>
+									<li>
+										<a href="reports/deprecated.html">
+																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																																															<i class="fa-solid fa-file-circle-xmark"></i>&#160;Deprecated
+											<span class="label label-info pull-right">0</span>
+										</a>
+									</li>
+								</ul>
+							</li>
+						</ul>
+					</div>
+				</div>
+			</div>
+			<div class="go_to_top">
+				<a href="#top-of-site" style="color: inherit">Back To Top&#160;&#160;<i class="fa-solid fa-chevron-up"></i></a>
+			</div>
+		</nav>
+
+		<div id="___" class="container-fluid"> 	<section class="row-fluid">
+		<div class="span2 sidebar">
+								<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle " data-toggle="collapse" data-target="#namespace-521275157"></a>
+								<a href="namespaces/default.html" style="margin-left: 30px; padding-left: 0">\</a>
+			</div>
+			<div id="namespace-521275157" class="accordion-body collapse in">
+				<div class="accordion-inner">
+
+													<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-445144752"></a>
+								<a href="namespaces/drupal.html" style="margin-left: 30px; padding-left: 0">Drupal</a>
+			</div>
+			<div id="namespace-445144752" class="accordion-body collapse ">
+				<div class="accordion-inner">
+
+													<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1078876514"></a>
+								<a href="namespaces/drupal-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
+			</div>
+			<div id="namespace-1078876514" class="accordion-body collapse ">
+				<div class="accordion-inner">
+
+													<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1855290416"></a>
+								<a href="namespaces/drupal-cfw-do-sqlite-driver.html" style="margin-left: 30px; padding-left: 0">Driver</a>
+			</div>
+			<div id="namespace-1855290416" class="accordion-body collapse ">
+				<div class="accordion-inner">
+
+													<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1222905668"></a>
+								<a href="namespaces/drupal-cfw-do-sqlite-driver-database.html" style="margin-left: 30px; padding-left: 0">Database</a>
+			</div>
+			<div id="namespace-1222905668" class="accordion-body collapse ">
+				<div class="accordion-inner">
+
+													<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-2061413337"></a>
+								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
+			</div>
+			<div id="namespace-2061413337" class="accordion-body collapse ">
+				<div class="accordion-inner">
+
+													<div class="accordion" style="margin-bottom: 0">
+		<div class="accordion-group">
+			<div class="accordion-heading">
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-613582906"></a>
+								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite-install.html" style="margin-left: 30px; padding-left: 0">Install</a>
+			</div>
+			<div id="namespace-613582906" class="accordion-body collapse ">
+				<div class="accordion-inner">
+
+					
+					<ul>
+																									<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Install-Tasks.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Install\Tasks">Tasks</abbr></a></li>
+											</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+					
+					<ul>
+																									<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-CfwSqlClient.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\CfwSqlClient">CfwSqlClient</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Connection.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection">Connection</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-ExceptionHandler.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\ExceptionHandler">ExceptionHandler</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-HostBridgeException.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\HostBridgeException">HostBridgeException</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Schema.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Schema">Schema</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-SqlAnalyzer.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\SqlAnalyzer">SqlAnalyzer</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-SqlErrorException.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\SqlErrorException">SqlErrorException</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement">Statement</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionBuffer.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer">TransactionBuffer</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-TransactionManager.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionManager">TransactionManager</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-UncommittedStateException.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\UncommittedStateException">UncommittedStateException</abbr></a></li>
+													<li class="class"><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Upsert.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Upsert">Upsert</abbr></a></li>
+											</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+					
+					<ul>
+																							</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+					
+					<ul>
+																							</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+					
+					<ul>
+																							</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+					
+					<ul>
+																							</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+					
+					<ul>
+																							</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
+		</div>
+	</section>
+	<section class="row-fluid">
+		<div class="span10 offset2">
+			<div class="row-fluid">
+				<div class="span8 content class">
+					<nav>
+												<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite">cfw_do_sqlite</abbr></a>
+						<i class="fa-solid fa-turn-up"></i>
+											</nav>
+					
+					<h1>
+						<small>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite</small>
+						Statement</h1>
+					<p>
+						<em>A statement whose result set arrives whole, from the host.</em>
+					</p>
+					<p>StatementBase is the right base here rather than StatementPrefetchIterator:
+the prefetching one is generic over any client but still drives a
+\PDOStatement through PdoTrait, and there is no PDO anywhere in this driver.
+What is kept from it is the shape - the host hands back every row in one
+reply, so the result is a PrefetchedResult and there is never a live cursor to
+keep open. That removes the problem the core sqlite Statement was written to
+work around (SQLite refusing writes to a table with an open SELECT) rather
+than working around it.</p>
+<p>Two behaviours are worth knowing before reading a value out of this class.</p>
+<p>COLUMN VALUES ARE STRINGS OR NULL. The core sqlite driver sets PDO's
+ATTR_STRINGIFY_FETCHES, so Drupal is written against string columns; this
+driver matches that. It also has to: the wasm build is 32-bit, so a SQLite
+INTEGER above 2^31 crosses the boundary as a ['__phpint' =&gt; '<digits>']
+envelope, and the client resolves that envelope to its digits. A node ID, a
+timestamp or a file size therefore reaches Drupal as an exact decimal string
+instead of a wrapped negative int or a leaked array.</p>
+<p>ROW COUNTS CAN BE DEFERRED. While a Drupal transaction is open the connection
+buffers writes instead of running them, so the number of rows a buffered
+UPDATE or DELETE changed is not known when execute() returns. rowCount() then
+resolves it on demand, which costs a speculative replay of the buffer.</p>
+
+																																											<section id="summary">
+						<h2>Summary</h2>
+						<section class="row-fluid heading">
+							<section class="span4">
+								<a href="#methods">Methods</a>
+							</section>
+							<section class="span4">
+								<a href="#properties">Properties</a>
+							</section>
+							<section class="span4">
+								<a href="#constants">Constants</a>
+							</section>
+						</section>
+						<section class="row-fluid public">
+							<section class="span4">
+																																																																																																																																																																															
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#method___construct" class="">__construct</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#method_execute" class="">execute</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#method_rowCount" class="">rowCount</a><br/>
+																								</section>
+							<section class="span4">
+																																																																			
+																	<em>No public properties found</em>
+															</section>
+							<section class="span4">
+																
+																	<em>No public constants found</em>
+															</section>
+						</section>
+						<section class="row-fluid protected">
+							<section class="span4">
+																																																																																																																						
+																	<em>No protected methods found</em>
+															</section>
+							<section class="span4">
+																																																																			
+																	<em>No protected properties found</em>
+															</section>
+							<section class="span4">
+																
+																	<em>No protected constants found</em>
+															</section>
+						</section>
+						<section class="row-fluid private">
+							<section class="span4">
+																																																																																																																																																																															
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#method_splitPointFor" class="">splitPointFor</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#method_runSplitInList" class="">runSplitInList</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#method_normalizeArgs" class="">normalizeArgs</a><br/>
+																								</section>
+							<section class="span4">
+																																																																																																																												
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#property_driverConnection" class="">driverConnection</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#property_bufferIndex" class="">bufferIndex</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#property_resolvedRowCount" class="">resolvedRowCount</a><br/>
+																								</section>
+							<section class="span4">
+																
+																	<em>No private constants found</em>
+															</section>
+						</section>
+					</section>
+				</div>
+				<aside class="span4 detailsbar">
+																<span class="label label-info">final</span>
+					
+					
+					<dl>
+						<dt>File</dt>
+						<dd>
+							<a href="files/src-driver-database-cfw-do-sqlite-statement.html">
+								<div class="path-wrapper">src/Driver/Database/cfw_do_sqlite/Statement.php</div>
+							</a>
+						</dd>
+													<dt>Package</dt>
+							<dd>
+								<div class="namespace-wrapper">Application</div>
+							</dd>
+												<dt>Class hierarchy</dt>
+						<dd class="hierarchy">
+																																																																
+									<div class="namespace-wrapper"><abbr title="\Drupal\Core\Database\Statement\StatementBase">StatementBase</abbr></div>
+																						<div class="namespace-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div>
+						</dd>
+
+																					<dt>Implements</dt>
+														<dd>
+								<a href="\Drupal\Core\Database\StatementInterface">
+									<div class="namespace-wrapper"></div>
+								</a>
+							</dd>
+						
+						
+												
+																														<dt>See also</dt>
+																									<dd>
+										<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Connection.html#method_runStatement">
+											<span class="namespace-wrapper"></span>
+										</a>
+									</dd>
+																	<dd>
+										<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-CfwSqlClient.html">
+											<span class="namespace-wrapper"></span>
+										</a>
+									</dd>
+																																																																																																																																																																																																																											
+																	</dl>
+					<h2>Tags</h2>
+					<table class="table table-condensed">
+																											<tr>
+									<th>
+										see
+									</th>
+									<td>
+																																
+																																
+																			</td>
+								</tr>
+															<tr>
+									<th>
+										package
+									</th>
+									<td>
+																																<p>Application</p>
+
+																			</td>
+								</tr>
+															<tr>
+									<th>
+										uses
+									</th>
+									<td>
+																			</td>
+								</tr>
+															<tr>
+									<th>
+										method
+									</th>
+									<td>
+																			</td>
+								</tr>
+															<tr>
+									<th>
+										property
+									</th>
+									<td>
+																			</td>
+								</tr>
+															<tr>
+									<th>
+										property-read
+									</th>
+									<td>
+																			</td>
+								</tr>
+															<tr>
+									<th>
+										property-write
+									</th>
+									<td>
+																			</td>
+								</tr>
+																		</table>
+				</aside>
+			</div>
+
+						
+										<a id="properties" name="properties"></a>
+				<div class="row-fluid">
+					<div class="span8 content class">
+						<h2>Properties</h2>
+					</div>
+					<aside class="span4 detailsbar"></aside>
+				</div>
+
+																																																																													    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="property_driverConnection" name="property_driverConnection" class="anchor"></a>
+            <article class="property">
+                <h3 class="private ">$driverConnection</h3>
+                <pre class="signature">$driverConnection : \Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection</pre>
+                <p><em>The connection, typed to this driver so buffering is reachable.</em></p>
+                
+
+                                <h4>Type</h4>
+                <a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Connection.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection">Connection</abbr></a>
+                                            </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas-solid fa-arrow-down"></i></h1>
+                        <dl>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="property_bufferIndex" name="property_bufferIndex" class="anchor"></a>
+            <article class="property">
+                <h3 class="private ">$bufferIndex</h3>
+                <pre class="signature">$bufferIndex : ?int</pre>
+                <p><em>Buffer index of this statement, when it was withheld rather than run.</em></p>
+                
+
+                                <h4>Type</h4>
+                int|null
+                                            </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas-solid fa-arrow-down"></i></h1>
+                        <dl>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="property_resolvedRowCount" name="property_resolvedRowCount" class="anchor"></a>
+            <article class="property">
+                <h3 class="private ">$resolvedRowCount</h3>
+                <pre class="signature">$resolvedRowCount : ?int</pre>
+                <p><em>A resolved row count for a buffered write, cached after the first request.</em></p>
+                
+
+                                <h4>Type</h4>
+                int|null
+                                            </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas-solid fa-arrow-down"></i></h1>
+                        <dl>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+												
+										<a id="methods" name="methods"></a>
+				<div class="row-fluid">
+					<div class="span8 content class">
+						<h2>Methods</h2>
+					</div>
+					<aside class="span4 detailsbar"></aside>
+				</div>
+
+															    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method___construct" name="method___construct" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">__construct()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">__construct(\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\CfwSqlClient  <span class="argument">$client</span>, \Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection  <span class="argument">$connection</span>, string  <span class="argument">$queryString</span>, bool  <span class="argument">$rowCountEnabled = false</span>) : mixed</pre>
+                <p><em>Constructs a Statement.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\CfwSqlClient</td>
+                                <td>$client </td>
+                                <td><p>The client connection, in the slot a \PDO would occupy.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection</td>
+                                <td>$connection </td>
+                                <td><p>The Drupal connection.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>string</td>
+                                <td>$queryString </td>
+                                <td><p>The statement, with prefixes and identifier quotes already resolved.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>bool</td>
+                                <td>$rowCountEnabled </td>
+                                <td><p>(optional) Whether rowCount() may be called. Defaults to FALSE.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    mixed
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																																						    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_execute" name="method_execute" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">execute()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">execute(mixed  <span class="argument">$args = []</span>, mixed  <span class="argument">$options = []</span>) : mixed</pre>
+                <p><em>{@inheritdoc}</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>mixed</td>
+                                <td>$args </td>
+                                <td></td>
+                            </tr>
+                                                    <tr>
+                                <td>mixed</td>
+                                <td>$options </td>
+                                <td></td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    mixed
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_rowCount" name="method_rowCount" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">rowCount()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">rowCount() : mixed</pre>
+                <p><em>{@inheritdoc}</em></p>
+                
+
+                
+                
+                                    <h4>Returns</h4>
+                    mixed
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																																																																																																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_splitPointFor" name="method_splitPointFor" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">splitPointFor()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">splitPointFor(string  <span class="argument">$query</span>, array  <span class="argument">$args</span>) : array{prefix: string, names: list&lt;string&gt;, suffix: string}|null</pre>
+                <p><em>Where an oversized read can be split, or NULL when it cannot be.</em></p>
+                <p>WHY THIS EXISTS. The host caps a statement at 100 bound parameters. <code class="prettyprint">Upsert</code> already chunks
+WRITES against that ceiling, and the read path had no equivalent because nothing had ever
+generated an oversized read -- until a module install made Drupal's config storage load 169
+names in one <code class="prettyprint">IN()</code>, which failed with &quot;too many SQL variables&quot; and left the install
+half-applied: <code class="prettyprint">core.extension</code> written, the rest of the install not.</p>
+<p>REFUSES FAR MORE THAN IT ACCEPTS, and every refusal is a case where concatenating batches
+would silently return the wrong answer rather than an error:</p>
+<ul>
+<li>not a SELECT: splitting a write changes what it writes.</li>
+<li><code class="prettyprint">ORDER BY</code>, <code class="prettyprint">LIMIT</code> or <code class="prettyprint">OFFSET</code>: global ordering and cut-off cannot be reconstructed from
+independently ordered batches, and the result would look plausible.</li>
+<li><code class="prettyprint">GROUP BY</code>, <code class="prettyprint">DISTINCT</code> or an aggregate: the answer is a fold over the whole set, so a
+per-batch fold is a different number.</li>
+<li>more than one placeholder <code class="prettyprint">IN()</code> list, or an <code class="prettyprint">IN()</code> holding anything but placeholders:
+which list to split is then a guess.</li>
+<li>a statement whose NON-list parameters alone already exceed the ceiling: no batch size
+helps, so failing loudly is correct.</li>
+</ul>
+
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$query </td>
+                                <td></td>
+                            </tr>
+                                                    <tr>
+                                <td>array</td>
+                                <td>$args </td>
+                                <td></td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    array{prefix: string, names: list<string>, suffix: string}|null
+                                            &mdash; <p>The split point, or NULL when the statement must not be split.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                            <span class="label label-info">static</span>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_runSplitInList" name="method_runSplitInList" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">runSplitInList()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">runSplitInList(array  <span class="argument">$args</span>) : array</pre>
+                <p><em>Runs an oversized read as batches and merges the rows.</em></p>
+                <p>Exact rather than approximate: the batches partition the IN list, so their union is the
+original result set. <code class="prettyprint">rowCount</code> is summed; a SELECT writes nothing, so there is no buffered
+write to reconcile and <code class="prettyprint">bufferIndex</code> stays whatever the last batch reported.</p>
+
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>array</td>
+                                <td>$args </td>
+                                <td></td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    array
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																																						    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_normalizeArgs" name="method_normalizeArgs" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">normalizeArgs()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">normalizeArgs(array  <span class="argument">$args</span>) : array</pre>
+                <p><em>Renders Drupal&#039;s arguments as parameters the host can bind.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>array</td>
+                                <td>$args </td>
+                                <td><p>The arguments as Drupal built them.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                                    <h4>Throws</h4>
+                    <dl>
+                                                    <dt>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\HostBridgeException</dt>
+                            <dd><p>If an argument is of a type the bridge cannot carry.</p>
+</dd>
+                                                                    </dl>
+                
+                                    <h4>Returns</h4>
+                    array
+                                            &mdash; <p>The parameters, keys untouched so the host's named-to-positional
+rewriting still applies.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                            <span class="label label-info">static</span>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+														</div>
+	</section>
+
+	<div id="source-view" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="source-view-label" aria-hidden="true">
+		<div class="modal-header">
+			<button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+			<h3 id="source-view-label">Statement.php</h3>
+		</div>
+		<div class="modal-body">
+			<pre data-src="files/src/Driver/Database/cfw_do_sqlite/Statement.php.txt" class="language-php line-numbers"></pre>
+		</div>
+	</div>
+
+			<footer class="row-fluid">
+				<section class="span10 offset2">
+					<section class="row-fluid">
+						<section class="span10 offset1">
+							<section class="row-fluid footer-sections">
+								<section
+									class="span4">
+																		<h1>
+										<i class="fa-solid fa-code"></i>
+									</h1>
+									<div>
+										<ul>
+																							<li><a href="namespaces/drupal.html"><abbr title="\Drupal">Drupal</abbr></a></li>
+																					</ul>
+									</div>
+								</section>
+								<section
+									class="span4">
+																		<h1>
+										<i class="fa-solid fa-project-diagram"></i>
+									</h1>
+									<div>
+										<ul>
+											<li><a href="graphs/class.html">Class Hierarchy Diagram</a></li>
+										</ul>
+									</div>
+								</section>
+								<section
+									class="span4">
+																		<h1>
+										<i class="fa-solid fa-thumbtack"></i>
+									</h1>
+									<div>
+										<ul>
+											<li><a href="reports/errors.html">Errors</a></li>
+											<li><a href="reports/markers.html">Markers</a></li>
+										</ul>
+									</div>
+								</section>
+							</section>
+						</section>
+					</section>
+					<section class="row-fluid">
+						<section class="span10 offset1">
+							<hr/>
+							Documentation is powered by
+							<a href="https://www.phpdoc.org/">phpDocumentor
+							</a>
+							and authored
+							                    on
+							August 14th, 2026 at 02:33.
+						</section>
+					</section>
+				</section>
+			</footer>
+		</div>
+		<script src="resources/js/jquery-1.11.0.min.js"></script>
+		<script src="resources/js/ui/1.10.4/jquery-ui.min.js"></script>
+		<script src="resources/js/jquery.smooth-scroll.js"></script>
+		<script src="resources/js/prism.min.js"></script>
+		<script src="resources/js/bootstrap.js"></script>
+		<script src="resources/js/custom.js"></script>
+			</body>
+</html>
