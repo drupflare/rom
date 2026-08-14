@@ -33,11 +33,11 @@ The package is `drupflare/rom`; the driver directory and module machine name are
 
 - [Why a New Driver](#-why-a-new-driver)
 - [How It Works](#-how-it-works)
-- [The Host Contract](#-the-host-contract)
+- [Host Contract](#-host-contract)
 - [Installation](#-installation)
 - [Table Prefixes](#-table-prefixes)
 - [Platform Limits](#-platform-limits)
-- [What the Design Does Not Cover](#-what-the-design-does-not-cover)
+- [Design Limits](#-design-limits)
 - [SQL Function and Collation Audit](#-sql-function-and-collation-audit)
 - [Cost](#-cost)
 - [Related Repositories](#-related-repositories)
@@ -184,7 +184,7 @@ ceiling below.
 
 ---
 
-## 🔗 The Host Contract
+## 🔗 Host Contract
 
 Two functions installed on the PHP module by the Worker, both reached through
 `vrzno_env()`. `CfwSqlClient` is the only class that talks to either, standing exactly
@@ -380,7 +380,7 @@ that wide; the exposure is contrib holding 64-bit ids.
 
 ---
 
-## 🚫 What the Design Does Not Cover
+## 🚫 Design Limits
 
 In descending order of how likely you are to hit it.
 
