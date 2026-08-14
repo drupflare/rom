@@ -34,13 +34,19 @@ use Exception;
  * NO TRANSACTION CONTROL. BEGIN is refused by the runtime. Writes issued while a
  * Drupal transaction is open are buffered here and replayed inside one host-side
  * transactionSync() at commit. That makes reads the interesting case, and
- * runStatement() is where it is handled.
+ * runStatement() is where it is handled. What a replay learns is kept on the
+ * buffer, so a second question about the same buffered statement costs nothing.
  *
- * NO TABLE PREFIX. The core sqlite driver implements prefixes by attaching one
- * database file per prefix; there are no files and no ATTACH here. One Durable
- * Object is one database, so a non-empty prefix is rejected at construction
- * rather than silently producing "prefix"."table" against a schema that does not
- * exist.
+ * TABLE PREFIXES ARE NAME-MANGLED, NOT ATTACHED. The core sqlite driver
+ * implements a prefix by attaching one database file per prefix and emitting
+ * "prefix"."table"; there are no files and no ATTACH here, so that mechanism has
+ * no analogue. The base Connection's own mechanism does, and it is the one used:
+ * setPrefix() folds the prefix into the identifier, so {node} resolves to
+ * "myprefix_node" in the single database this Durable Object owns. A period is
+ * the one prefix character that still cannot work, because it names a schema; it
+ * is refused at construction. See Schema::findTables(), which the core sqlite
+ * driver implements against the attached-database assumption and which therefore
+ * had to be replaced rather than inherited.
  *
  * @see CfwSqlClient
  * @see TransactionManager
@@ -86,6 +92,28 @@ class Connection extends SqliteDriverConnection
 	public const MAX_LIKE_PATTERN_BYTES = 50;
 
 	/**
+	 * Bound parameters the host allows in one statement.
+	 *
+	 * Measured, not documented by the platform: 100 succeeds, 101 fails with "too many SQL
+	 * variables". `Upsert` already chunks writes against this; `Statement::execute()` splits an
+	 * oversized read IN() list against it, which is a separate path that only surfaced when a
+	 * module install made Drupal load 169 config names at once.
+	 */
+	public const MAX_BOUND_PARAMETERS = 100;
+
+	/**
+	 * Characters a table prefix may contain on this driver.
+	 *
+	 * Core validates a prefix against [A-Za-z0-9_.], and the period is there because
+	 * every other driver reads it as a schema selector - MySQL a database, PostgreSQL a
+	 * schema, core sqlite an ATTACHed file. A Durable Object owns exactly one database
+	 * and cannot attach a second, so a period would name something that does not exist.
+	 * Every other character core allows works here, because the prefix is folded into
+	 * the identifier rather than used to address a schema.
+	 */
+	public const PREFIX_PATTERN = '/^[A-Za-z0-9_]*$/';
+
+	/**
 	 * Constructs a Connection.
 	 *
 	 * @param object $connection
@@ -94,9 +122,10 @@ class Connection extends SqliteDriverConnection
 	 * @param array $connection_options
 	 *   The connection options. 'database' is accepted and ignored: the Durable
 	 *   Object's identity selects the database, so the value is documentation.
+	 *   'prefix' is honoured by name-mangling; see PREFIX_PATTERN.
 	 *
 	 * @throws HostBridgeException
-	 *   If the client is not a CfwSqlClient, or a table prefix was configured.
+	 *   If the client is not a CfwSqlClient, or the prefix names a schema.
 	 */
 	public function __construct(object $connection, array $connection_options)
 	{
@@ -108,19 +137,34 @@ class Connection extends SqliteDriverConnection
 				),
 			);
 		}
-		if (($connection_options['prefix'] ?? '') !== '') {
+		$prefix = (string) ($connection_options['prefix'] ?? '');
+		if (!self::isSupportedPrefix($prefix)) {
 			throw new HostBridgeException(
 				sprintf(
-					"A table prefix ('%s') is configured, but the core sqlite driver implements prefixes with ATTACH DATABASE and ctx.storage.sql has no second database to attach. Use one Durable Object per site instead.",
-					$connection_options['prefix'],
+					"The table prefix '%s' cannot be used: a period in a prefix selects a schema, and ctx.storage.sql exposes exactly one database with no ATTACH to add another. Prefixes without a period work; they are folded into the table identifier.",
+					$prefix,
 				),
 			);
 		}
 
-		// the core sqlite constructor types its client as \PDO and runs the prefix
-		// attach logic, so the base constructor is invoked directly; with an empty
-		// prefix it is all the sqlite one would have done anyway
+		// the core sqlite constructor types its client as \PDO and turns a prefix into an
+		// ATTACHed database, so the base constructor is invoked directly; its own
+		// setPrefix() is the name-mangling implementation this driver wants
 		DatabaseConnection::__construct($connection, $connection_options);
+	}
+
+	/**
+	 * Returns whether a table prefix can be honoured by this driver.
+	 *
+	 * @param string $prefix
+	 *   The configured prefix; an empty string is always supported.
+	 *
+	 * @return bool
+	 *   TRUE when the prefix can be folded into an identifier.
+	 */
+	public static function isSupportedPrefix(string $prefix): bool
+	{
+		return preg_match(self::PREFIX_PATTERN, $prefix) === 1;
 	}
 
 	/**
@@ -190,9 +234,9 @@ class Connection extends SqliteDriverConnection
 	 */
 	public function getAttachedDatabases()
 	{
-		// the one schema that exists, reported so that the inherited
-		// Schema::findTables() has something to iterate; the backing property stays
-		// empty so the sqlite destructor never tries to prune a file
+		// the one schema that exists, reported so that Schema::findTables() has something
+		// to iterate; the backing property stays empty so the sqlite destructor never
+		// tries to prune a file
 		return ['main' => 'main'];
 	}
 
@@ -556,6 +600,50 @@ class Connection extends SqliteDriverConnection
 	}
 
 	/**
+	 * Returns how many host transactions this connection has opened.
+	 *
+	 * Committing and speculative together, because both are a BEGIN on the host and both are
+	 * billed as one.
+	 *
+	 * @return int
+	 *   The count.
+	 */
+	public function transactionCount(): int
+	{
+		return $this->client()->transactionCount();
+	}
+
+	/**
+	 * Returns how many of those transactions were speculative.
+	 *
+	 * A speculative transaction is replayed and rolled back so a read can observe buffered
+	 * writes, or so a row count or an insert id can be resolved before commit.
+	 *
+	 * @return int
+	 *   The count.
+	 */
+	public function speculativeCount(): int
+	{
+		return $this->client()->speculativeCount();
+	}
+
+	/**
+	 * Returns how many statements were re-sent inside speculative replays.
+	 *
+	 * The three counters answer three different questions and none of them substitutes for
+	 * another: statementCount() is bridge crossings, transactionCount() is host BEGINs, and this
+	 * is work the host did inside them. A replay cache would leave the first two alone and move
+	 * only this one, which is what makes it a measurable change rather than a hopeful one.
+	 *
+	 * @return int
+	 *   The count.
+	 */
+	public function replayedStatementCount(): int
+	{
+		return $this->client()->replayedStatementCount();
+	}
+
+	/**
 	 * Returns whether a buffered transaction can be committed atomically.
 	 *
 	 * FALSE means the host has no transaction entry point, so a commit replays
@@ -766,6 +854,9 @@ class Connection extends SqliteDriverConnection
 	 * host call and O(buffered statements) statement executions inside it, which
 	 * is why Statement caches the answer.
 	 *
+	 * A replay that has already covered this index answers for free; see
+	 * TransactionBuffer::rememberResults().
+	 *
 	 * @param int $index
 	 *   The buffer index of the statement.
 	 *
@@ -779,6 +870,11 @@ class Connection extends SqliteDriverConnection
 	{
 		$buffer = $this->requireBuffer('resolve the row count of a buffered write');
 
+		$cached = $buffer->resolvedResult($index);
+		if ($cached !== null) {
+			return $cached['changes'];
+		}
+
 		if (!$this->client()->supportsTransactions()) {
 			throw new UncommittedStateException(
 				sprintf(
@@ -789,6 +885,7 @@ class Connection extends SqliteDriverConnection
 		}
 
 		$replay = $this->client()->runTransaction($buffer->statementsUpTo($index), false);
+		$buffer->rememberResults($replay['results']);
 		$result = $replay['results'][$index] ?? null;
 
 		return is_array($result) ? $result['changes'] : 0;
@@ -855,6 +952,10 @@ class Connection extends SqliteDriverConnection
 			'sql' => $sql,
 			'params' => $params,
 		]);
+		// a dirty read replays the WHOLE buffer, so it answers every outstanding insert id
+		// and row count at no extra cost; keeping those is the only way the O(W*R) term
+		// ever shrinks rather than just being measured
+		$buffer->rememberResults($replay['results']);
 		$read = $replay['readResult'];
 
 		if (!is_array($read)) {
@@ -873,6 +974,9 @@ class Connection extends SqliteDriverConnection
 	/**
 	 * Returns the rowid a buffered insert would be given.
 	 *
+	 * A replay that has already covered this index answers for free; see
+	 * TransactionBuffer::rememberResults().
+	 *
 	 * @return string
 	 *   The rowid as a decimal string.
 	 *
@@ -888,6 +992,11 @@ class Connection extends SqliteDriverConnection
 			return $this->client()->lastInsertId();
 		}
 
+		$cached = $buffer->resolvedResult($index);
+		if ($cached !== null) {
+			return $cached['lastInsertId'];
+		}
+
 		if (!$this->client()->supportsTransactions()) {
 			throw new UncommittedStateException(
 				sprintf(
@@ -898,6 +1007,7 @@ class Connection extends SqliteDriverConnection
 		}
 
 		$replay = $this->client()->runTransaction($buffer->statementsUpTo($index), false);
+		$buffer->rememberResults($replay['results']);
 		$result = $replay['results'][$index] ?? null;
 
 		return is_array($result) ? $result['lastInsertId'] : '0';
