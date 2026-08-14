@@ -82,64 +82,64 @@
 								<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle " data-toggle="collapse" data-target="#namespace-1461974098"></a>
+									<a class="accordion-toggle " data-toggle="collapse" data-target="#namespace-790814916"></a>
 								<a href="namespaces/default.html" style="margin-left: 30px; padding-left: 0">\</a>
 			</div>
-			<div id="namespace-1461974098" class="accordion-body collapse in">
+			<div id="namespace-790814916" class="accordion-body collapse in">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1571202326"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1594104662"></a>
 								<a href="namespaces/drupal.html" style="margin-left: 30px; padding-left: 0">Drupal</a>
 			</div>
-			<div id="namespace-1571202326" class="accordion-body collapse ">
+			<div id="namespace-1594104662" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-700113095"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-102960150"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
 			</div>
-			<div id="namespace-700113095" class="accordion-body collapse ">
+			<div id="namespace-102960150" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-170231776"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-349257749"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver.html" style="margin-left: 30px; padding-left: 0">Driver</a>
 			</div>
-			<div id="namespace-170231776" class="accordion-body collapse ">
+			<div id="namespace-349257749" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-924710847"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1280429386"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database.html" style="margin-left: 30px; padding-left: 0">Database</a>
 			</div>
-			<div id="namespace-924710847" class="accordion-body collapse ">
+			<div id="namespace-1280429386" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1573410233"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1181076275"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
 			</div>
-			<div id="namespace-1573410233" class="accordion-body collapse ">
+			<div id="namespace-1181076275" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1060363004"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-486540461"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite-install.html" style="margin-left: 30px; padding-left: 0">Install</a>
 			</div>
-			<div id="namespace-1060363004" class="accordion-body collapse ">
+			<div id="namespace-486540461" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 					
@@ -219,273 +219,84 @@
 	<section class="row-fluid">
 		<div class="span10 offset2">
 			<div class="row-fluid">
-				<div class="span8 content class">
-					<nav>
-												<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite">cfw_do_sqlite</abbr></a>
-						<i class="fa-solid fa-turn-up"></i>
-											</nav>
-					
-					<h1>
-						<small>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite</small>
-						Upsert</h1>
-					<p>
-						<em>Upsert that respects the host&#039;s 100-bound-parameter ceiling.</em>
-					</p>
-					<p>WHY THIS EXISTS. Durable Object SQLite refuses a statement carrying more than 100
-bound parameters: 100 succeeds, 101 fails with <code class="prettyprint">too many SQL variables: SQLITE_ERROR</code>. Bisected directly through <code class="prettyprint">/sql</code> against a real <code class="prettyprint">ctx.storage.sql</code>,
-not inferred from PDO or from documentation.</p>
-<p>Core's sqlite <code class="prettyprint">Upsert::__toString()</code> builds ONE multi-row statement --
-<code class="prettyprint">INSERT INTO t (...) VALUES (...), (...), ... ON CONFLICT ...</code> -- so the generic
-<code class="prettyprint">execute()</code> flattens every row into a single parameter list of rows x fields.</p>
-<p>That is not a corner case, it is the cache write path. <code class="prettyprint">DatabaseBackend::setMultiple()</code>
-upserts in chunks of <code class="prettyprint">MAX_ITEMS_PER_CACHE_SET = 100</code> rows over 7 columns, which is
-<strong>700 placeholders</strong> -- so core's own chunking is already 7x over the ceiling. A cold
-<code class="prettyprint">cache_discovery</code> write (82 entries, 574 placeholders) made every render 500. Any cache
-flush on a live site reproduces it, so it is not specific to a freshly packed database.</p>
-<p>The fix is to re-batch by PLACEHOLDER count rather than by row count, because the limit
-counts parameters and a row's width is not fixed. Core's row-based chunk cannot express
-that; this can.</p>
-<p>Multiple batches are wrapped in one transaction, matching what core's sqlite <code class="prettyprint">Insert</code>
-does for multi-row inserts: the driver withholds writes and replays the whole buffer
-inside one <code class="prettyprint">transactionSync()</code>, so a half-applied cache set is not observable.</p>
+				<div class="span8 content file">
+					<nav>											</nav>
 
-																																											<section id="summary">
-						<h2>Summary</h2>
-						<section class="row-fluid heading">
-							<section class="span4">
-								<a href="#methods">Methods</a>
-							</section>
-							<section class="span4">
-								<a href="#properties">Properties</a>
-							</section>
-							<section class="span4">
-								<a href="#constants">Constants</a>
-							</section>
-						</section>
-						<section class="row-fluid public">
-							<section class="span4">
-																																																				
-																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Upsert.html#method_execute" class="">execute</a><br/>
-																								</section>
-							<section class="span4">
-																
-																	<em>No public properties found</em>
-															</section>
-							<section class="span4">
-																																																				
-																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Upsert.html#constant_MAX_PLACEHOLDERS" class="">MAX_PLACEHOLDERS</a><br/>
-																								</section>
-						</section>
-						<section class="row-fluid protected">
-							<section class="span4">
-																																	
-																	<em>No protected methods found</em>
-															</section>
-							<section class="span4">
-																
-																	<em>No protected properties found</em>
-															</section>
-							<section class="span4">
-																																	
-																	<em>No protected constants found</em>
-															</section>
-						</section>
-						<section class="row-fluid private">
-							<section class="span4">
-																																	
-																	<em>No private methods found</em>
-															</section>
-							<section class="span4">
-																
-																	<em>No private properties found</em>
-															</section>
-							<section class="span4">
-																																	
-																	<em>No private constants found</em>
-															</section>
-						</section>
-					</section>
-				</div>
-				<aside class="span4 detailsbar">
-										
+										<h1>
+						<small>src</small>
+						pdo-shim.php</h1>
+					<p>
+						<em></em>
+					</p>
 					
+
+					
+					
+											<h2>Classes</h2>
+						<table class="table table-hover">
+															<tr>
+									<td><a href="classes/PDOException.html"><abbr title="\PDOException">PDOException</abbr></a></td>
+									<td>
+										<em>The database-error exception ext-pdo would declare.</em>
+									</td>
+								</tr>
+															<tr>
+									<td><a href="classes/PDO.html"><abbr title="\PDO">PDO</abbr></a></td>
+									<td>
+										<em>The connection class ext-pdo would declare.</em>
+									</td>
+								</tr>
+															<tr>
+									<td><a href="classes/PDOStatement.html"><abbr title="\PDOStatement">PDOStatement</abbr></a></td>
+									<td>
+										<em>The prepared-statement class ext-pdo would declare.</em>
+									</td>
+								</tr>
+													</table>
+									</div>
+
+				<aside class="span4 detailsbar">
 					<dl>
-						<dt>File</dt>
-						<dd>
-							<a href="files/src-driver-database-cfw-do-sqlite-upsert.html">
-								<div class="path-wrapper">src/Driver/Database/cfw_do_sqlite/Upsert.php</div>
-							</a>
-						</dd>
 													<dt>Package</dt>
 							<dd>
-								<div class="namespace-wrapper">Application</div>
+								<div class="namespace-wrapper">\Application</div>
 							</dd>
-												<dt>Class hierarchy</dt>
-						<dd class="hierarchy">
-																																																																
-									<div class="namespace-wrapper"><abbr title="\Drupal\sqlite\Driver\Database\sqlite\Upsert">Upsert</abbr></div>
-																						<div class="namespace-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Upsert</div>
-						</dd>
-
 						
-						
-												
-																														<dt>See also</dt>
-																									<dd>
-										<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Connection.html#method_upsert">
-											<span class="namespace-wrapper"></span>
-										</a>
-									</dd>
-																																																																																																																																																																																																																											
-																	</dl>
+																																
+					</dl>
 					<h2>Tags</h2>
 					<table class="table table-condensed">
-																											<tr>
+																					<tr>
 									<th>
-										see
+										file
 									</th>
 									<td>
-																																
-																			</td>
-								</tr>
-															<tr>
-									<th>
-										package
-									</th>
-									<td>
-																																<p>Application</p>
+																																<p>Userland PDO, PDOException and PDOStatement, for a build with no ext-pdo.</p>
 
 																			</td>
 								</tr>
-															<tr>
-									<th>
-										uses
-									</th>
-									<td>
-																			</td>
-								</tr>
-															<tr>
-									<th>
-										method
-									</th>
-									<td>
-																			</td>
-								</tr>
-															<tr>
-									<th>
-										property
-									</th>
-									<td>
-																			</td>
-								</tr>
-															<tr>
-									<th>
-										property-read
-									</th>
-									<td>
-																			</td>
-								</tr>
-															<tr>
-									<th>
-										property-write
-									</th>
-									<td>
-																			</td>
+																												<tr>
+									<td colspan="2">
+										<em>None found</em>
+									</td>
 								</tr>
 																		</table>
+
 				</aside>
 			</div>
 
-										<a id="constants" name="constants"></a>
-				<div class="row-fluid">
-					<div class="span8 content class">
-						<h2>Constant</h2>
-					</div>
-					<aside class="span4 detailsbar"></aside>
-				</div>
-
-															    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="constant_MAX_PLACEHOLDERS" name="constant_MAX_PLACEHOLDERS" class="anchor"></a>
-            <article id="constant_MAX_PLACEHOLDERS" class="constant">
-                <h3 class="public ">MAX_PLACEHOLDERS</h3>
-                <pre class="signature">MAX_PLACEHOLDERS = 100</pre>
-                <p><em>Bound parameters the host accepts in one statement.</em></p>
-                <p>MEASURED, not assumed: 100 binds, 101 throws. An earlier note in TECHNICAL_REPORT.md claimed
-the limit did not exist on Durable Object SQLite; that claim is refuted.</p>
-
-            </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas-solid fa-arrow-down"></i></h1>
-                        <dl>
-                                
-                                                                                
-                                                            </dl>
-
-                        <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-									
-													
-																
-						
-										<a id="methods" name="methods"></a>
-				<div class="row-fluid">
-					<div class="span8 content class">
-						<h2>Methods</h2>
-					</div>
-					<aside class="span4 detailsbar"></aside>
-				</div>
-
-															    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="method_execute" name="method_execute" class="anchor"></a>
-            <article class="method">
-                <h3 class="public ">execute()</h3>
-                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">execute() : int|null</pre>
-                <p><em>{@inheritdoc}</em></p>
-                
-
-                
-                
-                                    <h4>Returns</h4>
-                    int|null
-                                            &mdash; <p>Rows affected, or NULL when there was nothing to write. Core's own
-Query\Upsert::execute() returns NULL from the same branch while documenting
-<code class="prettyprint">@return int</code>; keeping the NULL keeps this a drop-in for it.</p>
-
-                                                                                </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas fa-arrow-down"></i></h1>
-                                                            <dl>
-                                                    <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Upsert.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Upsert</div></a></dd>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																																								</div>
+			
+			
+		</div>
 	</section>
 
 	<div id="source-view" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="source-view-label" aria-hidden="true">
 		<div class="modal-header">
 			<button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-			<h3 id="source-view-label">Upsert.php</h3>
+			<h3 id="source-view-label"></h3>
 		</div>
 		<div class="modal-body">
-			<pre data-src="files/src/Driver/Database/cfw_do_sqlite/Upsert.php.txt" class="language-php line-numbers"></pre>
+			<pre data-src="files/src/pdo-shim.php.txt" class="language-php line-numbers"></pre>
 		</div>
 	</div>
 
