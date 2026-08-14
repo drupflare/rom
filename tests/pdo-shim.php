@@ -226,7 +226,8 @@ foreach ($classes as $class) {
 
 echo "\nNothing extra, so the set does not drift upwards either\n";
 
-$declared = array_keys(new ReflectionClass($probe)->getConstants());
+$reflection = new ReflectionClass($probe);
+$declared = array_keys($reflection->getConstants());
 sort($declared);
 ok(
 	'every constant the shim carries is one core resolves',
