@@ -238,6 +238,31 @@ ok(
 		implode(',', array_diff($constants, $declared)),
 );
 
+echo "\nThe two version-dependent flags resolve to this PHP's layout\n";
+
+$repacked = PHP_VERSION_ID >= 80500;
+printf(
+	"  note PHP %s uses the %s flag layout\n",
+	PHP_VERSION,
+	$repacked ? 'repacked 8.5' : 'pre-8.5',
+);
+ok(
+	'FETCH_CLASSTYPE took the ' . ($repacked ? '1<<7' : '0x00040000') . ' branch',
+	constant("$probe::FETCH_CLASSTYPE") === ($repacked ? 1 << 7 : 0x00040000),
+);
+ok(
+	'FETCH_PROPS_LATE took the ' . ($repacked ? '1<<8' : '0x00100000') . ' branch',
+	constant("$probe::FETCH_PROPS_LATE") === ($repacked ? 1 << 8 : 0x00100000),
+);
+// and the flags still OR cleanly into FETCH_CLASS, which is the only way core uses them
+ok(
+	'FETCH_CLASS | each flag stays distinguishable from FETCH_CLASS',
+	(constant("$probe::FETCH_CLASS") | constant("$probe::FETCH_CLASSTYPE")) !==
+		constant("$probe::FETCH_CLASS") &&
+		(constant("$probe::FETCH_CLASS") | constant("$probe::FETCH_PROPS_LATE")) !==
+			constant("$probe::FETCH_CLASS"),
+);
+
 echo "\nIt behaves like ext-pdo with no driver registered\n";
 
 ok(

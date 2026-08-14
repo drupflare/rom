@@ -38,10 +38,6 @@ class PDO
 {
 	/**
 	 * The fetch modes, as ext/pdo/php_pdo_driver.h numbers them.
-	 *
-	 * FETCH_CLASSTYPE and FETCH_PROPS_LATE are flags rather than modes, which is
-	 * why they are powers of two well above the rest: core ORs them into
-	 * FETCH_CLASS.
 	 */
 	public const FETCH_DEFAULT = 0;
 	public const FETCH_LAZY = 1;
@@ -56,8 +52,20 @@ class PDO
 	public const FETCH_FUNC = 10;
 	public const FETCH_NAMED = 11;
 	public const FETCH_KEY_PAIR = 12;
-	public const FETCH_CLASSTYPE = 128;
-	public const FETCH_PROPS_LATE = 256;
+
+	/**
+	 * The two fetch FLAGS, which core ORs into FETCH_CLASS.
+	 *
+	 * PHP 8.5 REPACKED THESE and nothing else in this file moved with them.
+	 * php_pdo_driver.h widened PDO_FETCH_FLAGS from 0xFFFF0000 to 0xFFFFFFF0 and
+	 * moved the flags down from the high half-word to bits 5-9, so CLASSTYPE went
+	 * 0x00040000 -> 1<<7 and PROPS_LATE went 0x00100000 -> 1<<8. Read out of the
+	 * headers: 8.3.11 and 8.4.1 carry the old layout, 8.5.2 and 8.5.7 the new one.
+	 * tests/pdo-shim.php checks both against whatever extension is running, which
+	 * is what makes the 80500 boundary a claim CI can refute rather than a guess.
+	 */
+	public const FETCH_CLASSTYPE = PHP_VERSION_ID >= 80500 ? 1 << 7 : 0x00040000;
+	public const FETCH_PROPS_LATE = PHP_VERSION_ID >= 80500 ? 1 << 8 : 0x00100000;
 
 	/**
 	 * The bound-parameter type Drupal\Core\Database\Connection::quote() defaults to.
