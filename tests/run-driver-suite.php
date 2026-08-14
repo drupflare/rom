@@ -30,6 +30,7 @@ use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\HostBridgeException;
 use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Schema;
 use Drupal\sqlite\Driver\Database\sqlite\Connection as CoreSqliteConnection;
 use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\SqlAnalyzer;
+use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\SqlErrorException;
 use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\UncommittedStateException;
 
 require __DIR__ . '/fixtures/FakeHost.php';
@@ -1477,6 +1478,184 @@ ok(
 );
 $cacheTransaction->rollBack();
 unset($cacheTransaction);
+// #endregion
+// #region statements the engine rejects
+//
+// A buffered write is reported as successful before anything has run, so a statement SQLite
+// would refuse sits in the buffer looking fine. Left there it is fatal twice over: every later
+// replay re-runs it, and so does the commit, so the transaction can never succeed even after
+// the reason for the refusal is gone.
+//
+// This is not hypothetical and it is not a corner. It is the exact shape of Drupal core's own
+// lazy-table idiom -- write, catch the failure, create the table, carry on -- which
+// MatcherDumper::dump() runs INSIDE a transaction. Before Connection::speculate() existed, a
+// stock `standard` install died there: `DELETE FROM router` was buffered instead of failing,
+// so ensureTableExists() never fired, and the buffered delete then poisoned every replay. See
+// tests/run-installer.php, which is what found it.
+echo "\nRejected statements\n";
+
+[$rejectHost, $rejectConnection] = connect();
+$rejectConnection->query('CREATE TABLE {kept} (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)');
+$rejectConnection
+	->insert('kept')
+	->fields(['v' => 'committed'])
+	->execute();
+
+// the idiom, statement for statement
+$rejectTransaction = $rejectConnection->startTransaction();
+$missingDelete = $rejectConnection->prepareStatement('DELETE FROM {absent}', [], true);
+$missingDelete->execute();
+ok(
+	'a write to a table that does not exist is buffered rather than refused',
+	$rejectConnection->isBuffering(),
+);
+
+$rejected = null;
+try {
+	$missingDelete->rowCount();
+} catch (\Exception $e) {
+	$rejected = $e;
+}
+ok('asking what it changed is what surfaces the refusal', $rejected instanceof SqlErrorException);
+ok(
+	'and the message is the engine naming the table, which is what core catches on',
+	$rejected !== null && str_contains($rejected->getMessage(), 'no such table: absent'),
+	$rejected === null ? 'nothing was thrown' : $rejected->getMessage(),
+);
+
+// the whole point: the transaction is still usable, so core's recovery can run
+$absentBefore = $rejectConnection->speculativeCount();
+ok(
+	'asking a second time reports 0 rows changed, because the statement did not happen',
+	$missingDelete->rowCount() === 0,
+	(string) $missingDelete->rowCount(),
+);
+ok(
+	'and costs no replay, because a refused statement is not sent again',
+	$rejectConnection->speculativeCount() === $absentBefore,
+	sprintf('%d before, %d after', $absentBefore, $rejectConnection->speculativeCount()),
+);
+
+$rejectConnection->query('CREATE TABLE {absent} (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)');
+$rejectConnection
+	->insert('absent')
+	->fields(['v' => 'created inside the same transaction'])
+	->execute();
+$rejectTransaction->commitOrRelease();
+unset($rejectTransaction);
+ok(
+	'the transaction survives the refusal and commits',
+	(int) $rejectHost->pdo->query('SELECT COUNT(*) FROM absent')->fetchColumn() === 1,
+);
+ok(
+	'the refused statement was sent exactly once, so nothing replayed it afterwards',
+	count(
+		array_filter($rejectHost->statements, fn($s) => str_contains($s, 'DELETE FROM "absent"')),
+	) === 1,
+	(string) count(
+		array_filter($rejectHost->statements, fn($s) => str_contains($s, 'DELETE FROM "absent"')),
+	),
+);
+
+// WHICH statement failed has to be recovered by bisection: the host reports one error for the
+// whole replay and never says where. Four buffered writes, none of them resolved yet, and the
+// third is the bad one -- so a scheme that simply blamed the newest or the oldest is wrong.
+$rejectConnection->query('CREATE TABLE {gone} (id INTEGER PRIMARY KEY, v TEXT)');
+$rejectConnection->query('DROP TABLE {gone}');
+
+$rejectTransaction = $rejectConnection->startTransaction();
+$rejectConnection->query('UPDATE {kept} SET [v] = :v', [':v' => 'first']);
+$rejectConnection->query('UPDATE {kept} SET [v] = :v', [':v' => 'second']);
+$rejectConnection->query('DELETE FROM {gone}');
+$rejectConnection->query('UPDATE {kept} SET [v] = :v', [':v' => 'third']);
+
+$bisectBefore = $rejectHost->speculativeCalls;
+$bisected = null;
+try {
+	$rejectConnection->query('SELECT [v] FROM {kept}')->fetchField();
+} catch (\Exception $e) {
+	$bisected = $e;
+}
+ok(
+	'a dirty read over a poisoned buffer reports the statement that is actually bad',
+	$bisected !== null && str_contains($bisected->getMessage(), 'no such table: gone'),
+	$bisected === null ? 'nothing was thrown' : $bisected->getMessage(),
+);
+ok(
+	'bisection is bounded: 4 buffered writes cost 4 host transactions to place the bad one',
+	$rejectHost->speculativeCalls - $bisectBefore === 4,
+	sprintf('%d transactions', $rejectHost->speculativeCalls - $bisectBefore),
+);
+
+$retried = $rejectConnection->query('SELECT [v] FROM {kept}')->fetchField();
+ok(
+	'the same read then succeeds, and observes every write except the refused one',
+	$retried === 'third',
+	var_export($retried, true),
+);
+
+// index stability: the update below sits at buffer index 3, behind a discarded slot. A replay
+// sends it at POSITION 2, so a driver that read the host's results positionally would attribute
+// this row count to the wrong statement and report 0.
+$behind = $rejectConnection->prepareStatement('UPDATE {kept} SET [v] = :v', [], true);
+$behind->execute([':v' => 'fourth']);
+ok(
+	'a statement buffered behind a discarded one still gets its own row count',
+	$behind->rowCount() === 1,
+	(string) $behind->rowCount(),
+);
+$rejectTransaction->commitOrRelease();
+unset($rejectTransaction);
+ok(
+	'and the commit replays the survivors without the discarded one',
+	$rejectHost->pdo->query('SELECT v FROM kept')->fetchColumn() === 'fourth',
+);
+
+// CONTROL: when the READ is what SQLite refuses, nothing buffered is at fault and nothing may be
+// discarded. Without this the assertions above would also pass on a driver that threw away a
+// statement every time anything went wrong.
+$rejectTransaction = $rejectConnection->startTransaction();
+$rejectConnection->query('UPDATE {kept} SET [v] = :v', [':v' => 'intact']);
+$badRead = null;
+try {
+	$rejectConnection->query('SELECT [v] FROM {kept}, {nosuchtable}')->fetchField();
+} catch (\Exception $e) {
+	$badRead = $e;
+}
+ok(
+	'CONTROL: a read naming a missing table fails on the read',
+	$badRead !== null && str_contains($badRead->getMessage(), 'no such table: nosuchtable'),
+	$badRead === null ? 'nothing was thrown' : $badRead->getMessage(),
+);
+ok(
+	'CONTROL: and the buffer is untouched, so the write is still there to be seen',
+	$rejectConnection->query('SELECT [v] FROM {kept}')->fetchField() === 'intact',
+);
+$rejectTransaction->rollBack();
+unset($rejectTransaction);
+
+// a discarded INSERT must stop counting as one, or lastInsertId() keeps asking about a rowid
+// that will never be assigned
+$rejectTransaction = $rejectConnection->startTransaction();
+$rejectConnection->query('INSERT INTO {stillabsent} ([v]) VALUES (:v)', [':v' => 'x']);
+$insertRejected = null;
+try {
+	$rejectConnection->lastInsertId();
+} catch (\Exception $e) {
+	$insertRejected = $e;
+}
+ok(
+	'a buffered insert into a missing table is refused when its id is asked for',
+	$insertRejected instanceof SqlErrorException,
+	$insertRejected === null ? 'nothing was thrown' : get_class($insertRejected),
+);
+ok(
+	'and the buffer stops claiming an insert, so the next call answers from the database',
+	ctype_digit($rejectConnection->lastInsertId()),
+	var_export($rejectConnection->lastInsertId(), true),
+);
+$rejectTransaction->rollBack();
+unset($rejectTransaction);
 // #endregion
 // #region a non-empty table prefix
 //
