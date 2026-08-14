@@ -28,17 +28,37 @@ rename it as tidying. If it is ever renamed it is a major version and both repos
 `drupflare/worker` keeps its own copy under `drupal/cfw_do_sqlite/`, because **Composer never runs
 on the edge**. The worker packs it into `assets/driver.json`, which the Durable Object mounts.
 
-**This repo's suite is the authority on behaviour**: `DRUPAL_ROOT=<worker>/drupal-src php
-tests/run-driver-suite.php` - 204 assertions. A change made only in the worker is untested code on
-the edge. The worker's `bun run check:sync` covers both copies plus the packed artifact; run its
-`bun run assets:driver` after any change here.
+**This repo's suite is the authority on behaviour.** A change made only in the worker is untested
+code on the edge. Run the worker's `bun run assets:driver` after any change here, or the packed
+copy goes stale - it has done so twice.
 
-`tests/run-driver-suite.php` and `tests/fixtures/FakeHost.php` must stay **byte-identical** to the
-worker's copies - `check-module-sync.ts` deliberately keeps them off its repo-only list. Repo-only
-files there are `composer.json`, `package.json`, `phpstan.neon`, `codecov.yml`, `renovate.json`,
-`tests/lint.php`, `tests/load-classes.php`, `tests/coverage.php` and the docs. **`tests/run-installer.php`
-is repo-only and needs adding to that `REPO_ONLY` set**, or the worker's `check:sync` reports it as
-"only in ../rom" and exits 1.
+| suite                            | assertions |
+| -------------------------------- | ---------- |
+| `php tests/run-driver-suite.php` | 204        |
+| `php tests/run-installer.php`    | 16         |
+| `php tests/pdo-shim.php`         | 61         |
+
+All three take a Drupal root as `$argv[1]` or `DRUPAL_ROOT`. Re-measure the counts before quoting
+them.
+
+**There is no `check:sync` in the worker any more**, so nothing compares this repo's files to the
+copies under `worker/drupal/` - that check was deleted along with `scripts/check-module-sync.ts`,
+and its `REPO_ONLY` set with it. What survives is `worker/tests/node/driver-pack.spec.ts`, which
+asserts `assets/driver.json` matches `worker/drupal/` byte for byte. Keeping this repo and that
+copy aligned is a release, not a hook.
+
+## The two PDO fetch flags are version-dependent, and that is not a simplification to make
+
+`src/pdo-shim.php` declares `FETCH_CLASSTYPE` and `FETCH_PROPS_LATE` through a `PHP_VERSION_ID`
+ternary. **PHP 8.5 repacked them** and nothing else in that file moved: `php_pdo_driver.h` widened
+`PDO_FETCH_FLAGS` from `0xFFFF0000` to `0xFFFFFFF0` and moved the flags out of the high half-word,
+so `CLASSTYPE` went `0x00040000` -> `1<<7` and `PROPS_LATE` went `0x00100000` -> `1<<8`. Read out
+of the headers at 8.3.11, 8.4.1 and 8.5.2, and confirmed by running `tests/pdo-shim.php` in
+`php:8.3-cli`, `php:8.4-cli` and `php:8.5-cli`.
+
+Collapsing either to one literal passes on whichever version is in front of you and fails the
+other two. `tests/pdo-shim.php` compares both against the running extension, so the boundary is a
+claim CI refutes rather than a comment nobody rechecks.
 
 ## Drupal 11.2 is a measured floor
 
