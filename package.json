@@ -10,6 +10,7 @@
 		"lint": "php tests/lint.php",
 		"test": "php tests/run-driver-suite.php",
 		"test:installer": "php tests/run-installer.php",
+		"test:pdo": "php tests/pdo-shim.php",
 		"test:coverage": "php tests/coverage.php",
 		"analyze": "./vendor/bin/phpstan analyse --memory-limit=1G",
 		"prepare": "husky",

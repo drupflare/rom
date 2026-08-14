@@ -42,6 +42,9 @@
 		"drupflare/drupflare": "Mail, outbound HTTP, images and logging bridged to Workers bindings. Needed by the same deployments that need this driver."
 	},
 	"autoload": {
+		"files": [
+			"src/pdo-shim.php"
+		],
 		"psr-4": {
 			"Drupal\\cfw_do_sqlite\\": "src/"
 		}
@@ -69,13 +72,15 @@
 		"lint": "phpcs",
 		"lint:fix": "phpcbf",
 		"test": "php tests/run-driver-suite.php",
-		"test:installer": "php tests/run-installer.php"
+		"test:installer": "php tests/run-installer.php",
+		"test:pdo": "php tests/pdo-shim.php"
 	},
 	"scripts-descriptions": {
 		"analyze": "Runs PHPStan over src/ and tests/ at the level pinned in phpstan.neon.",
 		"lint": "Runs phpcs with the ruleset in phpcs.xml.dist.",
 		"lint:fix": "Runs phpcbf over the same ruleset.",
 		"test": "Runs the driver suite; needs a Drupal 11.2+ root in $DRUPAL_ROOT or argv[1].",
-		"test:installer": "Installs a Drupal site through the driver into a throwaway copy of that root."
+		"test:installer": "Installs a Drupal site through the driver into a throwaway copy of that root.",
+		"test:pdo": "Checks src/pdo-shim.php against this PHP's ext-pdo and against core's PDO usage."
 	}
 }

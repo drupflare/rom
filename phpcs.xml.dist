@@ -33,6 +33,20 @@
 
 	<rule ref="DrupalPractice.General.ClassName.ClassPrefix">
 		<exclude-pattern>tests/fixtures/*</exclude-pattern>
+		<exclude-pattern>src/pdo-shim.php</exclude-pattern>
+	</rule>
+
+	<!--
+		src/pdo-shim.php declares the three classes ext-pdo would declare, so PHP names
+		them, not us: three classes cannot each match one filename, PDO is an acronym,
+		and a "CfwDoSqlite" prefix would make them the wrong classes.
+	-->
+	<rule ref="Squiz.Classes.ClassFileName">
+		<exclude-pattern>src/pdo-shim.php</exclude-pattern>
+	</rule>
+
+	<rule ref="Drupal.NamingConventions.ValidClassName">
+		<exclude-pattern>src/pdo-shim.php</exclude-pattern>
 	</rule>
 
 	<rule ref="Drupal">
