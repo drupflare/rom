@@ -21,7 +21,10 @@ final class TransactionBuffer
 	/**
 	 * Buffered statements, in issue order.
 	 *
-	 * @var array<int, array{sql: string, params: array, tables: string[]}>
+	 * A failed entry keeps its slot so that every index already handed out stays
+	 * valid; it is simply never replayed again. See discardFailed().
+	 *
+	 * @var array<int, array{sql: string, params: array, tables: string[], failed: bool}>
 	 */
 	private array $statements = [];
 
@@ -82,6 +85,7 @@ final class TransactionBuffer
 			'sql' => $sql,
 			'params' => $params,
 			'tables' => $tables,
+			'failed' => false,
 		];
 		$this->markDirty($tables);
 
@@ -93,25 +97,78 @@ final class TransactionBuffer
 	}
 
 	/**
-	 * Returns the number of buffered statements.
+	 * Returns the number of statements that would be replayed.
 	 *
 	 * @return int
-	 *   The count.
+	 *   The count, excluding statements the engine rejected.
 	 */
 	public function count(): int
 	{
-		return count($this->statements);
+		return count($this->liveIndexesUpTo($this->lastIndex()));
 	}
 
 	/**
-	 * Returns whether nothing is buffered.
+	 * Returns whether nothing would be replayed.
 	 *
 	 * @return bool
-	 *   TRUE when the buffer holds no statements.
+	 *   TRUE when the buffer holds no statement the engine has accepted.
 	 */
 	public function isEmpty(): bool
 	{
-		return $this->statements === [];
+		return $this->count() === 0;
+	}
+
+	/**
+	 * Drops a statement the engine rejected, keeping the transaction usable.
+	 *
+	 * A buffered write is reported as successful before anything has run, so its
+	 * rejection is only discovered by a later replay. On a real connection that
+	 * statement would have failed where it was issued and left no trace, and the
+	 * transaction would have carried on - Drupal's own "write, catch, create the
+	 * table, continue" idiom depends on exactly that. Keeping the rejected
+	 * statement instead poisons every later replay and the commit with it.
+	 *
+	 * The slot is kept rather than removed so that a buffer index already handed
+	 * to a Statement still names the same statement.
+	 *
+	 * @param int $index
+	 *   The buffer index of the rejected statement.
+	 *
+	 * @throws UncommittedStateException
+	 *   If no statement is buffered at that index.
+	 */
+	public function discardFailed(int $index): void
+	{
+		if (!isset($this->statements[$index])) {
+			throw new UncommittedStateException(
+				sprintf(
+					'Cannot discard buffered statement %d: the buffer holds %d slot(s).',
+					$index,
+					count($this->statements),
+				),
+			);
+		}
+
+		$this->statements[$index]['failed'] = true;
+		// a statement that never ran changed no rows and was given no rowid, so this is
+		// the exact answer rather than a placeholder, and it keeps a later rowCount()
+		// from paying for a replay to rediscover it
+		$this->resolved[$index] = ['lastInsertId' => '0', 'changes' => 0];
+		$this->recomputeDirtyTables();
+	}
+
+	/**
+	 * Returns the SQL of one buffered statement.
+	 *
+	 * @param int $index
+	 *   The buffer index.
+	 *
+	 * @return string
+	 *   The statement, or an empty string when the index is unknown.
+	 */
+	public function sqlAt(int $index): string
+	{
+		return $this->statements[$index]['sql'] ?? '';
 	}
 
 	/**
@@ -122,7 +179,19 @@ final class TransactionBuffer
 	 */
 	public function statements(): array
 	{
-		return $this->slice(count($this->statements) - 1);
+		return $this->slice($this->lastIndex());
+	}
+
+	/**
+	 * Returns the highest buffer index in use.
+	 *
+	 * @return int
+	 *   The index, or -1 when nothing has been buffered. Counts discarded slots,
+	 *   because they still occupy an index.
+	 */
+	public function lastIndex(): int
+	{
+		return count($this->statements) - 1;
 	}
 
 	/**
@@ -148,20 +217,52 @@ final class TransactionBuffer
 	 * outstanding id and row count as a side effect of work already being paid for.
 	 *
 	 * @param array<int, array{lastInsertId?: string, changes?: int}> $results
-	 *   Host results, keyed by buffer index. Anything past the end of the buffer is
-	 *   ignored rather than trusted.
+	 *   Host results, keyed by their POSITION in the replay rather than by buffer
+	 *   index; a discarded statement is not sent, so the two only agree while
+	 *   nothing has been discarded. Anything past the end is ignored rather than
+	 *   trusted.
+	 * @param int|null $upTo
+	 *   The buffer index the replay ran to, or NULL when it ran the whole buffer.
 	 */
-	public function rememberResults(array $results): void
+	public function rememberResults(array $results, ?int $upTo = null): void
 	{
-		foreach ($results as $index => $result) {
-			if (!isset($this->statements[$index])) {
+		$indexes = $this->liveIndexesUpTo($upTo ?? $this->lastIndex());
+		foreach ($results as $position => $result) {
+			if (!isset($indexes[$position])) {
 				continue;
 			}
-			$this->resolved[$index] = [
+			$this->resolved[$indexes[$position]] = [
 				'lastInsertId' => (string) ($result['lastInsertId'] ?? '0'),
 				'changes' => (int) ($result['changes'] ?? 0),
 			];
 		}
+	}
+
+	/**
+	 * Returns the buffer indexes a replay up to one index would send, in order.
+	 *
+	 * The list is positional: element 0 is the first statement the host would run,
+	 * which is what makes it the map from a host result back to a buffer index.
+	 *
+	 * @param int $index
+	 *   The last buffer index to include; a negative value yields an empty list.
+	 *
+	 * @return array<int, int>
+	 *   The buffer indexes, keyed by their position in the replay.
+	 */
+	public function liveIndexesUpTo(int $index): array
+	{
+		$out = [];
+		for ($i = 0; $i <= $index; $i++) {
+			if (!isset($this->statements[$i])) {
+				break;
+			}
+			if ($this->statements[$i]['failed']) {
+				continue;
+			}
+			$out[] = $i;
+		}
+		return $out;
 	}
 
 	/**
@@ -297,10 +398,7 @@ final class TransactionBuffer
 	private function slice(int $index): array
 	{
 		$out = [];
-		for ($i = 0; $i <= $index; $i++) {
-			if (!isset($this->statements[$i])) {
-				break;
-			}
+		foreach ($this->liveIndexesUpTo($index) as $i) {
 			$out[] = [
 				'sql' => $this->statements[$i]['sql'],
 				'params' => $this->statements[$i]['params'],
@@ -336,6 +434,9 @@ final class TransactionBuffer
 		$this->lastInsertIndex = null;
 
 		foreach ($this->statements as $index => $statement) {
+			if ($statement['failed']) {
+				continue;
+			}
 			$this->markDirty($statement['tables']);
 			if (preg_match('/^\s*(?:INSERT|REPLACE)\b/i', $statement['sql']) === 1) {
 				$this->lastInsertIndex = $index;
