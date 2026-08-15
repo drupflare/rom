@@ -1479,6 +1479,260 @@ ok(
 $cacheTransaction->rollBack();
 unset($cacheTransaction);
 // #endregion
+// #region predicting a buffered rowid instead of replaying for it
+//
+// SQLite gives an ordinary rowid table max(rowid) + 1, so the answer is arithmetic over state
+// the driver already holds. What makes that safe rather than clever is the refusal: every shape
+// RowidPlan cannot read falls back to the replay that was always there, so the failure mode is
+// slow rather than wrong. The AUTOINCREMENT control below is the proof these assertions have
+// teeth -- it runs the identical block on a serial table and still pays.
+echo "\nPredicted rowids\n";
+
+[$rowidHost, $rowidConnection] = connect();
+// the router's own shape: a text primary key and no serial column
+$rowidConnection->query('CREATE TABLE {rt} (name VARCHAR(255) PRIMARY KEY, path VARCHAR(255))');
+$rowidConnection->query('CREATE TABLE {rtserial} (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)');
+$rowidConnection->query('CREATE TABLE {rtchosen} (id INTEGER PRIMARY KEY, v TEXT)');
+// seeded so the committed maximum is not zero, which is the case a delete-all has to override
+for ($i = 1; $i <= 4; $i++) {
+	$rowidConnection
+		->insert('rt')
+		->fields(['name' => "seed.$i", 'path' => "/seed/$i"])
+		->execute();
+}
+
+/**
+ * Runs the dumper's shape: one transaction, a delete-all, then chunked inserts.
+ *
+ * @param \Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection $connection
+ *   The connection to drive.
+ * @param string $table
+ *   The table to rebuild.
+ * @param int $routes
+ *   How many rows to write.
+ * @param int $chunk
+ *   Rows per Insert::execute(), which is where lastInsertId() is asked for.
+ *
+ * @return array{speculative: int, replayed: int, transactions: int, lastId: string}
+ *   The deltas over the block, and the id the final chunk reported.
+ */
+function rebuild(Connection $connection, string $table, int $routes, int $chunk): array
+{
+	$before = [
+		'speculative' => $connection->speculativeCount(),
+		'replayed' => $connection->replayedStatementCount(),
+		'transactions' => $connection->transactionCount(),
+	];
+
+	$transaction = $connection->startTransaction();
+	$connection->delete($table)->execute();
+	$lastId = '';
+	for ($offset = 0; $offset < $routes; $offset += $chunk) {
+		$insert = $connection->insert($table)->fields(['name', 'path']);
+		for ($i = $offset; $i < min($routes, $offset + $chunk); $i++) {
+			$insert->values(['name' => "route.$i", 'path' => "/route/$i"]);
+		}
+		$lastId = (string) $insert->execute();
+	}
+	$transaction->commitOrRelease();
+	unset($transaction);
+
+	return [
+		'speculative' => $connection->speculativeCount() - $before['speculative'],
+		'replayed' => $connection->replayedStatementCount() - $before['replayed'],
+		'transactions' => $connection->transactionCount() - $before['transactions'],
+		'lastId' => $lastId,
+	];
+}
+
+$rebuilt = rebuild($rowidConnection, 'rt', 20, 5);
+
+// ONE replay survives and it is not an insert: `Delete::execute()` returns affected rows, and a
+// buffered delete's count is a question only the engine can answer. It replays a one-statement
+// buffer once per rebuild, so it is constant where the insert ids were quadratic. Predicting it
+// would mean deciding what `changes()` reports after SQLite's truncate optimisation, which is
+// not something to settle against a PDO stand-in.
+ok(
+	'a router-shaped rebuild opens ONE speculative transaction, for the delete row count',
+	$rebuilt['speculative'] === 1,
+	(string) $rebuilt['speculative'],
+);
+ok(
+	'and re-sends ONE statement, where four chunks of five used to re-send 55',
+	$rebuilt['replayed'] === 1,
+	(string) $rebuilt['replayed'],
+);
+ok(
+	'so it opens two host transactions: that one and the commit',
+	$rebuilt['transactions'] === 2,
+	(string) $rebuilt['transactions'],
+);
+ok(
+	'the host agrees only one was rolled back',
+	$rowidHost->speculativeCalls === 1,
+	(string) $rowidHost->speculativeCalls,
+);
+
+// the delete emptied the table, so the rows start at rowid 1 again rather than continuing from
+// the four seeds -- getting this wrong is the difference between a prediction and a guess
+ok(
+	'the delete-all resets the count, so the last of 20 rows is rowid 20',
+	$rebuilt['lastId'] === '20',
+	$rebuilt['lastId'],
+);
+ok(
+	'and the rebuild actually landed',
+	(int) $rowidConnection->query('SELECT COUNT(*) FROM {rt}')->fetchField() === 20,
+	(string) $rowidConnection->query('SELECT COUNT(*) FROM {rt}')->fetchField(),
+);
+ok(
+	'the rows are the ones written, not a replay artefact',
+	$rowidConnection
+		->query('SELECT path FROM {rt} WHERE name = :n', [':n' => 'route.19'])
+		->fetchField() === '/route/19',
+);
+
+// THE SHAPE, not the number. A replay per chunk over a growing buffer is quadratic in the rows,
+// so doubling both the rows and the chunks would take 55 re-sent statements to 210. Measuring it
+// at two sizes is what tells a constant from a small quadratic; one size cannot.
+$rebuiltWide = rebuild($rowidConnection, 'rt', 40, 5);
+ok(
+	'doubling the rebuild re-sends exactly as much, so the cost is constant in the rows',
+	$rebuiltWide['replayed'] === $rebuilt['replayed'],
+	sprintf('%d at 20 rows, %d at 40', $rebuilt['replayed'], $rebuiltWide['replayed']),
+);
+ok(
+	'and the wider rebuild lands every row and ends at rowid 40',
+	(int) $rowidConnection->query('SELECT COUNT(*) FROM {rt}')->fetchField() === 40 &&
+		$rebuiltWide['lastId'] === '40',
+	$rebuiltWide['lastId'],
+);
+
+// THE AGREEMENT CHECK. A predicted id that the engine disagrees with would be silently wrong
+// everywhere, so the two are made to answer the same question: the prediction first, then a
+// dirty read, which replays the whole buffer and overwrites the answer with the engine's.
+$agreeTransaction = $rowidConnection->startTransaction();
+$rowidConnection
+	->insert('rt')
+	->fields(['name' => 'agree.1', 'path' => '/agree/1'])
+	->execute();
+$predictedId = $rowidConnection->lastInsertId();
+$rowidConnection->query('SELECT path FROM {rt} WHERE name = :n', [':n' => 'agree.1'])->fetchField();
+$engineId = $rowidConnection->lastInsertId();
+$agreeTransaction->commitOrRelease();
+unset($agreeTransaction);
+ok(
+	'the predicted rowid is the one the engine assigns',
+	$predictedId === $engineId && $predictedId === '41',
+	sprintf('predicted %s, engine %s', $predictedId, $engineId),
+);
+
+// #region the controls, each of which must still pay for a replay
+$serialBefore = $rowidConnection->speculativeCount();
+$serialTransaction = $rowidConnection->startTransaction();
+$rowidConnection
+	->insert('rtserial')
+	->fields(['v' => 'serial'])
+	->execute();
+$serialTransaction->commitOrRelease();
+unset($serialTransaction);
+ok(
+	'CONTROL: an AUTOINCREMENT table still replays, because sqlite_sequence owns its next id',
+	$rowidConnection->speculativeCount() - $serialBefore === 1,
+	(string) ($rowidConnection->speculativeCount() - $serialBefore),
+);
+
+$chosenBefore = $rowidConnection->speculativeCount();
+$chosenTransaction = $rowidConnection->startTransaction();
+$rowidConnection
+	->insert('rtchosen')
+	->fields(['id' => 77, 'v' => 'chosen'])
+	->execute();
+$chosenTransaction->commitOrRelease();
+unset($chosenTransaction);
+ok(
+	'CONTROL: an insert that supplies the rowid itself is not an append, so it replays',
+	$rowidConnection->speculativeCount() - $chosenBefore === 1,
+	(string) ($rowidConnection->speculativeCount() - $chosenBefore),
+);
+
+// A CONDITIONAL delete leaves an unknown maximum behind, unlike the delete-all above, so the
+// insert after it has to replay. Read as a DIFFERENCE against the same block with an
+// unconditional delete: both pay one replay for the delete's own row count, which is the
+// subtrahend, so the extra one belongs to the insert and to nothing else.
+$rowidConnection->query(
+	'CREATE TABLE {rtwhere} (name VARCHAR(255) PRIMARY KEY, path VARCHAR(255))',
+);
+$rowidConnection
+	->insert('rtwhere')
+	->fields(['name' => 'seed', 'path' => '/seed'])
+	->execute();
+
+$wholeBefore = $rowidConnection->speculativeCount();
+$wholeTransaction = $rowidConnection->startTransaction();
+$rowidConnection->delete('rtwhere')->execute();
+$rowidConnection
+	->insert('rtwhere')
+	->fields(['name' => 'after.whole', 'path' => '/after/whole'])
+	->execute();
+$wholeTransaction->commitOrRelease();
+unset($wholeTransaction);
+$wholeCost = $rowidConnection->speculativeCount() - $wholeBefore;
+
+$partialBefore = $rowidConnection->speculativeCount();
+$partialTransaction = $rowidConnection->startTransaction();
+$rowidConnection->delete('rtwhere')->condition('name', 'after.whole')->execute();
+$rowidConnection
+	->insert('rtwhere')
+	->fields(['name' => 'after.partial', 'path' => '/after/partial'])
+	->execute();
+$partialTransaction->commitOrRelease();
+unset($partialTransaction);
+$partialCost = $rowidConnection->speculativeCount() - $partialBefore;
+
+ok(
+	'an unconditional delete then an insert replays once, for the delete row count alone',
+	$wholeCost === 1,
+	(string) $wholeCost,
+);
+ok(
+	'CONTROL: making that delete conditional blocks the table, so the insert replays too',
+	$partialCost === $wholeCost + 1,
+	sprintf('%d conditional, %d unconditional', $partialCost, $wholeCost),
+);
+
+// a savepoint rollback removes statements a later insert counted, so the plan has to be rebuilt
+// rather than adjusted -- an offset carried over the discarded rows would be too high
+$rollbackTransaction = $rowidConnection->startTransaction();
+$rowidConnection
+	->insert('rt')
+	->fields(['name' => 'keep.1', 'path' => '/keep/1'])
+	->execute();
+$savepoint = $rowidConnection->startTransaction();
+$rowidConnection
+	->insert('rt')
+	->fields(['name' => 'drop.1', 'path' => '/drop/1'])
+	->execute();
+$rowidConnection
+	->insert('rt')
+	->fields(['name' => 'drop.2', 'path' => '/drop/2'])
+	->execute();
+$savepoint->rollBack();
+unset($savepoint);
+$afterRollback = $rowidConnection
+	->insert('rt')
+	->fields(['name' => 'keep.2', 'path' => '/keep/2'])
+	->execute();
+$rollbackTransaction->commitOrRelease();
+unset($rollbackTransaction);
+$committedMax = (int) $rowidConnection->query('SELECT MAX(_rowid_) FROM {rt}')->fetchField();
+ok(
+	'a savepoint rollback un-counts the rows it discarded',
+	(int) $afterRollback === $committedMax,
+	sprintf('reported %s, table holds %d', (string) $afterRollback, $committedMax),
+);
+// #endregion
+// #endregion
 // #region statements the engine rejects
 //
 // A buffered write is reported as successful before anything has run, so a statement SQLite
