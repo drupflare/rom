@@ -1,6 +1,6 @@
 {
 	"name": "@drupflare/rom",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"private": true,
 	"description": "Tooling only. The published artifact is the composer package drupflare/rom.",
 	"scripts": {
