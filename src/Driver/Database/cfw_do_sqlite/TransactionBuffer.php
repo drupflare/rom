@@ -66,6 +66,53 @@ final class TransactionBuffer
 	private array $resolved = [];
 
 	/**
+	 * What the buffered inserts imply about the rowids they will be given.
+	 *
+	 * Maintained as statements arrive rather than derived on demand, so answering costs nothing
+	 * at the point an insert id is asked for -- which is every insert Drupal makes.
+	 */
+	private RowidPlan $rowidPlan;
+
+	public function __construct()
+	{
+		$this->rowidPlan = new RowidPlan();
+	}
+
+	/**
+	 * Returns what a buffered insert implies about its own rowid.
+	 *
+	 * @param int $index
+	 *   The buffer index.
+	 *
+	 * @return array{table: string, cleared: bool, offset: int, columns: string[]}|null
+	 *   The prediction inputs, or NULL when the statement or its table cannot be read.
+	 */
+	public function rowidPrediction(int $index): ?array
+	{
+		if (($this->statements[$index]['failed'] ?? true) === true) {
+			return null;
+		}
+		return $this->rowidPlan->entry($index);
+	}
+
+	/**
+	 * Returns whether a buffered statement appends exactly one row.
+	 *
+	 * @param int $index
+	 *   The buffer index.
+	 *
+	 * @return bool
+	 *   TRUE when its row count is known to be 1 without replaying anything.
+	 */
+	public function isSingleRowInsert(int $index): bool
+	{
+		if (($this->statements[$index]['failed'] ?? true) === true) {
+			return false;
+		}
+		return $this->rowidPlan->isSingleRowInsert($index);
+	}
+
+	/**
 	 * Appends a statement.
 	 *
 	 * @param string $sql
@@ -88,6 +135,7 @@ final class TransactionBuffer
 			'failed' => false,
 		];
 		$this->markDirty($tables);
+		$this->rowidPlan->record($index, $sql, $tables);
 
 		if (preg_match('/^\s*(?:INSERT|REPLACE)\b/i', $sql) === 1) {
 			$this->lastInsertIndex = $index;
@@ -425,19 +473,25 @@ final class TransactionBuffer
 	}
 
 	/**
-	 * Rebuilds the dirty set and the insert marker from what is still buffered.
+	 * Rebuilds the dirty set, the insert marker and the rowid plan from what is still buffered.
+	 *
+	 * The rowid plan is rebuilt rather than adjusted: a savepoint rollback removes statements from
+	 * the middle of what a later insert counted, so its offset is only correct if it is counted
+	 * again from the start.
 	 */
 	private function recomputeDirtyTables(): void
 	{
 		$this->dirtyTables = [];
 		$this->allDirty = false;
 		$this->lastInsertIndex = null;
+		$this->rowidPlan->reset();
 
 		foreach ($this->statements as $index => $statement) {
 			if ($statement['failed']) {
 				continue;
 			}
 			$this->markDirty($statement['tables']);
+			$this->rowidPlan->record($index, $statement['sql'], $statement['tables']);
 			if (preg_match('/^\s*(?:INSERT|REPLACE)\b/i', $statement['sql']) === 1) {
 				$this->lastInsertIndex = $index;
 			}
