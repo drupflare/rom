@@ -82,64 +82,64 @@
 								<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle " data-toggle="collapse" data-target="#namespace-640257899"></a>
+									<a class="accordion-toggle " data-toggle="collapse" data-target="#namespace-226790075"></a>
 								<a href="namespaces/default.html" style="margin-left: 30px; padding-left: 0">\</a>
 			</div>
-			<div id="namespace-640257899" class="accordion-body collapse in">
+			<div id="namespace-226790075" class="accordion-body collapse in">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-892563474"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1751260181"></a>
 								<a href="namespaces/drupal.html" style="margin-left: 30px; padding-left: 0">Drupal</a>
 			</div>
-			<div id="namespace-892563474" class="accordion-body collapse ">
+			<div id="namespace-1751260181" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1544158395"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-764543597"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
 			</div>
-			<div id="namespace-1544158395" class="accordion-body collapse ">
+			<div id="namespace-764543597" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-103781613"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-189389127"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver.html" style="margin-left: 30px; padding-left: 0">Driver</a>
 			</div>
-			<div id="namespace-103781613" class="accordion-body collapse ">
+			<div id="namespace-189389127" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1538188131"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-472153459"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database.html" style="margin-left: 30px; padding-left: 0">Database</a>
 			</div>
-			<div id="namespace-1538188131" class="accordion-body collapse ">
+			<div id="namespace-472153459" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1811747752"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-505384711"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
 			</div>
-			<div id="namespace-1811747752" class="accordion-body collapse ">
+			<div id="namespace-505384711" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-261742257"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-423717435"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite-install.html" style="margin-left: 30px; padding-left: 0">Install</a>
 			</div>
-			<div id="namespace-261742257" class="accordion-body collapse ">
+			<div id="namespace-423717435" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 					
@@ -228,30 +228,26 @@
 					
 					<h1>
 						<small>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite</small>
-						Statement</h1>
+						RowidPlan</h1>
 					<p>
-						<em>A statement whose result set arrives whole, from the host.</em>
+						<em>Predicts the rowid a buffered insert will be given, without running anything.</em>
 					</p>
-					<p>StatementBase is the right base here rather than StatementPrefetchIterator:
-the prefetching one is generic over any client but still drives a
-\PDOStatement through PdoTrait, and there is no PDO anywhere in this driver.
-What is kept from it is the shape - the host hands back every row in one
-reply, so the result is a PrefetchedResult and there is never a live cursor to
-keep open. That removes the problem the core sqlite Statement was written to
-work around (SQLite refusing writes to a table with an open SELECT) rather
-than working around it.</p>
-<p>Two behaviours are worth knowing before reading a value out of this class.</p>
-<p>COLUMN VALUES ARE STRINGS OR NULL. The core sqlite driver sets PDO's
-ATTR_STRINGIFY_FETCHES, so Drupal is written against string columns; this
-driver matches that. It also has to: the wasm build is 32-bit, so a SQLite
-INTEGER above 2^31 crosses the boundary as a ['__phpint' =&gt; '<digits>']
-envelope, and the client resolves that envelope to its digits. A node ID, a
-timestamp or a file size therefore reaches Drupal as an exact decimal string
-instead of a wrapped negative int or a leaked array.</p>
-<p>ROW COUNTS CAN BE DEFERRED. While a Drupal transaction is open the connection
-buffers writes instead of running them, so the number of rows a buffered
-UPDATE or DELETE changed is not known when execute() returns. rowCount() then
-resolves it on demand, which costs a speculative replay of the buffer.</p>
+					<p>SQLite assigns an ordinary rowid table <code class="prettyprint">max(rowid) + 1</code>, so the answer is arithmetic on state
+the driver already holds: the committed maximum, plus the inserts buffered since. This class
+holds the second half -- what the buffer implies -- and <code class="prettyprint">Connection</code> supplies the first.</p>
+<p>IT REFUSES FAR MORE THAN IT ANSWERS, and every refusal falls back to the replay that was
+always there, so a case this cannot read is slow rather than wrong:</p>
+<ul>
+<li>anything but <code class="prettyprint">INSERT INTO t (cols) VALUES (...)</code> with one tuple and no nested parentheses:
+<code class="prettyprint">ON CONFLICT</code>, <code class="prettyprint">OR REPLACE</code>, <code class="prettyprint">INSERT ... SELECT</code> and <code class="prettyprint">DEFAULT VALUES</code> can all write a row
+that is not a fresh append.</li>
+<li>any other write to that table, except a <code class="prettyprint">DELETE FROM t</code> with no <code class="prettyprint">WHERE</code>, which empties it
+and is the shape the router rebuild opens with.</li>
+<li>a statement whose target could not be named at all, which blocks every table at once.</li>
+</ul>
+<p>The AUTOINCREMENT case is refused in <code class="prettyprint">Connection</code>, where the schema is readable: its next id
+comes from <code class="prettyprint">sqlite_sequence</code> rather than from the table, and those are the tables whose id a
+caller actually uses.</p>
 
 																																											<section id="summary">
 						<h2>Summary</h2>
@@ -268,51 +264,54 @@ resolves it on demand, which costs a speculative replay of the buffer.</p>
 						</section>
 						<section class="row-fluid public">
 							<section class="span4">
-																																																																																																																																																																															
-																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#method___construct" class="">__construct</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#method_execute" class="">execute</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#method_rowCount" class="">rowCount</a><br/>
+																																																																																																																																																																																																																																						
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_record" class="">record</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_reset" class="">reset</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_entry" class="">entry</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_isSingleRowInsert" class="">isSingleRowInsert</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_suppliesRowid" class="">suppliesRowid</a><br/>
 																								</section>
 							<section class="span4">
-																																																																			
+																																																																																																					
 																	<em>No public properties found</em>
 															</section>
 							<section class="span4">
-																
+																																	
 																	<em>No public constants found</em>
 															</section>
 						</section>
 						<section class="row-fluid protected">
 							<section class="span4">
-																																																																																																																						
+																																																																																																																																							
 																	<em>No protected methods found</em>
 															</section>
 							<section class="span4">
-																																																																			
+																																																																																																					
 																	<em>No protected properties found</em>
 															</section>
 							<section class="span4">
-																
+																																	
 																	<em>No protected constants found</em>
 															</section>
 						</section>
 						<section class="row-fluid private">
 							<section class="span4">
-																																																																																																																																																																															
-																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#method_splitPointFor" class="">splitPointFor</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#method_runSplitInList" class="">runSplitInList</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#method_normalizeArgs" class="">normalizeArgs</a><br/>
+																																																																																																																																																																													
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_plainInsertColumns" class="">plainInsertColumns</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_isUnconditionalDelete" class="">isUnconditionalDelete</a><br/>
 																								</section>
 							<section class="span4">
-																																																																																																																												
-																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#property_driverConnection" class="">driverConnection</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#property_bufferIndex" class="">bufferIndex</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html#property_resolvedRowCount" class="">resolvedRowCount</a><br/>
+																																																																																																																																																																																																				
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#property_entries" class="">entries</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#property_cleared" class="">cleared</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#property_appended" class="">appended</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#property_blocked" class="">blocked</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#property_blockedAll" class="">blockedAll</a><br/>
 																								</section>
 							<section class="span4">
-																
-																	<em>No private constants found</em>
-															</section>
+																																																				
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#constant_ROWID_ALIASES" class="">ROWID_ALIASES</a><br/>
+																								</section>
 						</section>
 					</section>
 				</div>
@@ -323,8 +322,8 @@ resolves it on demand, which costs a speculative replay of the buffer.</p>
 					<dl>
 						<dt>File</dt>
 						<dd>
-							<a href="files/src-driver-database-cfw-do-sqlite-statement.html">
-								<div class="path-wrapper">src/Driver/Database/cfw_do_sqlite/Statement.php</div>
+							<a href="files/src-driver-database-cfw-do-sqlite-rowidplan.html">
+								<div class="path-wrapper">src/Driver/Database/cfw_do_sqlite/RowidPlan.php</div>
 							</a>
 						</dd>
 													<dt>Package</dt>
@@ -333,28 +332,15 @@ resolves it on demand, which costs a speculative replay of the buffer.</p>
 							</dd>
 												<dt>Class hierarchy</dt>
 						<dd class="hierarchy">
-																																																																
-									<div class="namespace-wrapper"><abbr title="\Drupal\Core\Database\Statement\StatementBase">StatementBase</abbr></div>
-																						<div class="namespace-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div>
+																																				<div class="namespace-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div>
 						</dd>
 
-																					<dt>Implements</dt>
-														<dd>
-								<a href="\Drupal\Core\Database\StatementInterface">
-									<div class="namespace-wrapper"></div>
-								</a>
-							</dd>
 						
 						
 												
 																														<dt>See also</dt>
 																									<dd>
-										<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Connection.html#method_runStatement">
-											<span class="namespace-wrapper"></span>
-										</a>
-									</dd>
-																	<dd>
-										<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-CfwSqlClient.html">
+										<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Connection.html#method_predictBufferedInsertId">
 											<span class="namespace-wrapper"></span>
 										</a>
 									</dd>
@@ -367,7 +353,6 @@ resolves it on demand, which costs a speculative replay of the buffer.</p>
 										see
 									</th>
 									<td>
-																																
 																																
 																			</td>
 								</tr>
@@ -419,7 +404,43 @@ resolves it on demand, which costs a speculative replay of the buffer.</p>
 				</aside>
 			</div>
 
-						
+										<a id="constants" name="constants"></a>
+				<div class="row-fluid">
+					<div class="span8 content class">
+						<h2>Constant</h2>
+					</div>
+					<aside class="span4 detailsbar"></aside>
+				</div>
+
+													
+													
+															    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="constant_ROWID_ALIASES" name="constant_ROWID_ALIASES" class="anchor"></a>
+            <article id="constant_ROWID_ALIASES" class="constant">
+                <h3 class="private ">ROWID_ALIASES</h3>
+                <pre class="signature">ROWID_ALIASES = [&#039;rowid&#039;, &#039;oid&#039;, &#039;_rowid_&#039;]</pre>
+                <p><em>Column names that name the rowid itself, so an insert supplying one is not an append.</em></p>
+                
+            </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas-solid fa-arrow-down"></i></h1>
+                        <dl>
+                                <dt>File</dt>
+                <dd><a href="files/src-driver-database-cfw-do-sqlite-rowidplan.html"><div class="path-wrapper">src/Driver/Database/cfw_do_sqlite/RowidPlan.php</div></a></dd>
+                                
+                                                                                
+                                                            </dl>
+
+                        <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+												
 										<a id="properties" name="properties"></a>
 				<div class="row-fluid">
 					<div class="span8 content class">
@@ -428,18 +449,21 @@ resolves it on demand, which costs a speculative replay of the buffer.</p>
 					<aside class="span4 detailsbar"></aside>
 				</div>
 
-																																																																													    <div class="row-fluid">
+																																																																																																																	    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="property_driverConnection" name="property_driverConnection" class="anchor"></a>
+            <a id="property_entries" name="property_entries" class="anchor"></a>
             <article class="property">
-                <h3 class="private ">$driverConnection</h3>
-                <pre class="signature">$driverConnection : \Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection</pre>
-                <p><em>The connection, typed to this driver so buffering is reachable.</em></p>
-                
+                <h3 class="private ">$entries</h3>
+                <pre class="signature">$entries : array<int,array{table: string, cleared: bool, offset: int, columns: string[]}></pre>
+                <p><em>What each buffered insert implies, keyed by buffer index.</em></p>
+                <p>Snapshotted per statement rather than kept as one running total, because the index asked
+about is not always the last thing buffered: <code class="prettyprint">[INSERT t, DELETE t]</code> reports the insert as
+the last insert, and a running counter would have already been cleared by the delete.</p>
+
 
                                 <h4>Type</h4>
-                <a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Connection.html"><abbr title="\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection">Connection</abbr></a>
-                                            </article>
+                array&lt;int, array{table: string, cleared: bool, offset: int, columns: string[]}&gt;
+                &mdash;                             </article>
         </div>
         <aside class="span4 detailsbar">
             <h1><i class="fas-solid fa-arrow-down"></i></h1>
@@ -455,16 +479,16 @@ resolves it on demand, which costs a speculative replay of the buffer.</p>
 
 																				    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="property_bufferIndex" name="property_bufferIndex" class="anchor"></a>
+            <a id="property_cleared" name="property_cleared" class="anchor"></a>
             <article class="property">
-                <h3 class="private ">$bufferIndex</h3>
-                <pre class="signature">$bufferIndex : ?int</pre>
-                <p><em>Buffer index of this statement, when it was withheld rather than run.</em></p>
+                <h3 class="private ">$cleared</h3>
+                <pre class="signature">$cleared : array<string,bool></pre>
+                <p><em>Tables emptied by an unconditional delete, whose next rowid is therefore 1.</em></p>
                 
 
                                 <h4>Type</h4>
-                int|null
-                                            </article>
+                array&lt;string, bool&gt;
+                &mdash;                             </article>
         </div>
         <aside class="span4 detailsbar">
             <h1><i class="fas-solid fa-arrow-down"></i></h1>
@@ -480,15 +504,65 @@ resolves it on demand, which costs a speculative replay of the buffer.</p>
 
 																				    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="property_resolvedRowCount" name="property_resolvedRowCount" class="anchor"></a>
+            <a id="property_appended" name="property_appended" class="anchor"></a>
             <article class="property">
-                <h3 class="private ">$resolvedRowCount</h3>
-                <pre class="signature">$resolvedRowCount : ?int</pre>
-                <p><em>A resolved row count for a buffered write, cached after the first request.</em></p>
+                <h3 class="private ">$appended</h3>
+                <pre class="signature">$appended : array<string,int></pre>
+                <p><em>Rows appended to each table since its base, committed or cleared.</em></p>
                 
 
                                 <h4>Type</h4>
-                int|null
+                array&lt;string, int&gt;
+                &mdash;                             </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas-solid fa-arrow-down"></i></h1>
+                        <dl>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="property_blocked" name="property_blocked" class="anchor"></a>
+            <article class="property">
+                <h3 class="private ">$blocked</h3>
+                <pre class="signature">$blocked : array<string,bool></pre>
+                <p><em>Tables carrying a buffered write this cannot reason about.</em></p>
+                
+
+                                <h4>Type</h4>
+                array&lt;string, bool&gt;
+                &mdash;                             </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas-solid fa-arrow-down"></i></h1>
+                        <dl>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="property_blockedAll" name="property_blockedAll" class="anchor"></a>
+            <article class="property">
+                <h3 class="private ">$blockedAll</h3>
+                <pre class="signature">$blockedAll : bool</pre>
+                <p><em>Whether a statement wrote something unnameable, which blocks every table.</em></p>
+                
+
+                                <h4>Type</h4>
+                bool
                                             </article>
         </div>
         <aside class="span4 detailsbar">
@@ -514,45 +588,39 @@ resolves it on demand, which costs a speculative replay of the buffer.</p>
 
 															    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="method___construct" name="method___construct" class="anchor"></a>
+            <a id="method_record" name="method_record" class="anchor"></a>
             <article class="method">
-                <h3 class="public ">__construct()</h3>
+                <h3 class="public ">record()</h3>
                 <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">__construct(\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\CfwSqlClient  <span class="argument">$client</span>, \Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection  <span class="argument">$connection</span>, string  <span class="argument">$queryString</span>, bool  <span class="argument">$rowCountEnabled = false</span>) : mixed</pre>
-                <p><em>Constructs a Statement.</em></p>
+                <pre class="signature" style="margin-right: 54px;">record(int  <span class="argument">$index</span>, string  <span class="argument">$sql</span>, string[]  <span class="argument">$tables</span>) : void</pre>
+                <p><em>Folds one buffered statement in.</em></p>
                 
 
                                     <h4>Parameters</h4>
                     <table class="table table-condensed table-hover">
                                                     <tr>
-                                <td>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\CfwSqlClient</td>
-                                <td>$client </td>
-                                <td><p>The client connection, in the slot a \PDO would occupy.</p>
-</td>
-                            </tr>
-                                                    <tr>
-                                <td>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection</td>
-                                <td>$connection </td>
-                                <td><p>The Drupal connection.</p>
+                                <td>int</td>
+                                <td>$index </td>
+                                <td><p>The buffer index the statement was given.</p>
 </td>
                             </tr>
                                                     <tr>
                                 <td>string</td>
-                                <td>$queryString </td>
-                                <td><p>The statement, with prefixes and identifier quotes already resolved.</p>
+                                <td>$sql </td>
+                                <td><p>The statement.</p>
 </td>
                             </tr>
                                                     <tr>
-                                <td>bool</td>
-                                <td>$rowCountEnabled </td>
-                                <td><p>(optional) Whether rowCount() may be called. Defaults to FALSE.</p>
+                                <td>string[]</td>
+                                <td>$tables </td>
+                                <td><p>The tables it writes, from SqlAnalyzer::writtenTables().</p>
 </td>
                             </tr>
                                             </table>
                 
                 
                                     <h4>Returns</h4>
-                    mixed
+                    void
                                             &mdash; 
                                                                                 </article>
         </div>
@@ -560,51 +628,7 @@ resolves it on demand, which costs a speculative replay of the buffer.</p>
             <h1><i class="fas fa-arrow-down"></i></h1>
                                                             <dl>
                                                     <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div></a></dd>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																																						    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="method_execute" name="method_execute" class="anchor"></a>
-            <article class="method">
-                <h3 class="public ">execute()</h3>
-                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">execute(mixed  <span class="argument">$args = []</span>, mixed  <span class="argument">$options = []</span>) : mixed</pre>
-                <p><em>{@inheritdoc}</em></p>
-                
-
-                                    <h4>Parameters</h4>
-                    <table class="table table-condensed table-hover">
-                                                    <tr>
-                                <td>mixed</td>
-                                <td>$args </td>
-                                <td></td>
-                            </tr>
-                                                    <tr>
-                                <td>mixed</td>
-                                <td>$options </td>
-                                <td></td>
-                            </tr>
-                                            </table>
-                
-                
-                                    <h4>Returns</h4>
-                    mixed
-                                            &mdash; 
-                                                                                </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas fa-arrow-down"></i></h1>
-                                                            <dl>
-                                                    <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div></a></dd>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
                                                                                                 
                                                             </dl>
             <h2>Tags</h2>
@@ -616,18 +640,18 @@ resolves it on demand, which costs a speculative replay of the buffer.</p>
 
 																				    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="method_rowCount" name="method_rowCount" class="anchor"></a>
+            <a id="method_reset" name="method_reset" class="anchor"></a>
             <article class="method">
-                <h3 class="public ">rowCount()</h3>
+                <h3 class="public ">reset()</h3>
                 <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">rowCount() : mixed</pre>
-                <p><em>{@inheritdoc}</em></p>
+                <pre class="signature" style="margin-right: 54px;">reset() : void</pre>
+                <p><em>Forgets everything, so the plan can be rebuilt from a truncated buffer.</em></p>
                 
 
                 
                 
                                     <h4>Returns</h4>
-                    mixed
+                    void
                                             &mdash; 
                                                                                 </article>
         </div>
@@ -635,71 +659,7 @@ resolves it on demand, which costs a speculative replay of the buffer.</p>
             <h1><i class="fas fa-arrow-down"></i></h1>
                                                             <dl>
                                                     <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div></a></dd>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																																																																																																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="method_splitPointFor" name="method_splitPointFor" class="anchor"></a>
-            <article class="method">
-                <h3 class="private ">splitPointFor()</h3>
-                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">splitPointFor(string  <span class="argument">$query</span>, array  <span class="argument">$args</span>) : array{prefix: string, names: list&lt;string&gt;, suffix: string}|null</pre>
-                <p><em>Where an oversized read can be split, or NULL when it cannot be.</em></p>
-                <p>WHY THIS EXISTS. The host caps a statement at 100 bound parameters. <code class="prettyprint">Upsert</code> already chunks
-WRITES against that ceiling, and the read path had no equivalent because nothing had ever
-generated an oversized read -- until a module install made Drupal's config storage load 169
-names in one <code class="prettyprint">IN()</code>, which failed with &quot;too many SQL variables&quot; and left the install
-half-applied: <code class="prettyprint">core.extension</code> written, the rest of the install not.</p>
-<p>REFUSES FAR MORE THAN IT ACCEPTS, and every refusal is a case where concatenating batches
-would silently return the wrong answer rather than an error:</p>
-<ul>
-<li>not a SELECT: splitting a write changes what it writes.</li>
-<li><code class="prettyprint">ORDER BY</code>, <code class="prettyprint">LIMIT</code> or <code class="prettyprint">OFFSET</code>: global ordering and cut-off cannot be reconstructed from
-independently ordered batches, and the result would look plausible.</li>
-<li><code class="prettyprint">GROUP BY</code>, <code class="prettyprint">DISTINCT</code> or an aggregate: the answer is a fold over the whole set, so a
-per-batch fold is a different number.</li>
-<li>more than one placeholder <code class="prettyprint">IN()</code> list, or an <code class="prettyprint">IN()</code> holding anything but placeholders:
-which list to split is then a guess.</li>
-<li>a statement whose NON-list parameters alone already exceed the ceiling: no batch size
-helps, so failing loudly is correct.</li>
-</ul>
-
-
-                                    <h4>Parameters</h4>
-                    <table class="table table-condensed table-hover">
-                                                    <tr>
-                                <td>string</td>
-                                <td>$query </td>
-                                <td></td>
-                            </tr>
-                                                    <tr>
-                                <td>array</td>
-                                <td>$args </td>
-                                <td></td>
-                            </tr>
-                                            </table>
-                
-                
-                                    <h4>Returns</h4>
-                    array{prefix: string, names: list<string>, suffix: string}|null
-                                            &mdash; <p>The split point, or NULL when the statement must not be split.</p>
-
-                                                                                </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas fa-arrow-down"></i></h1>
-                            <span class="label label-info">static</span>
-                                                            <dl>
-                                                    <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div></a></dd>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
                                                                                                 
                                                             </dl>
             <h2>Tags</h2>
@@ -711,37 +671,80 @@ helps, so failing loudly is correct.</li>
 
 																				    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="method_runSplitInList" name="method_runSplitInList" class="anchor"></a>
+            <a id="method_entry" name="method_entry" class="anchor"></a>
             <article class="method">
-                <h3 class="private ">runSplitInList()</h3>
+                <h3 class="public ">entry()</h3>
                 <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">runSplitInList(array  <span class="argument">$args</span>) : array</pre>
-                <p><em>Runs an oversized read as batches and merges the rows.</em></p>
-                <p>Exact rather than approximate: the batches partition the IN list, so their union is the
-original result set. <code class="prettyprint">rowCount</code> is summed; a SELECT writes nothing, so there is no buffered
-write to reconcile and <code class="prettyprint">bufferIndex</code> stays whatever the last batch reported.</p>
-
+                <pre class="signature" style="margin-right: 54px;">entry(int  <span class="argument">$index</span>) : array{table: string, cleared: bool, offset: int, columns: string[]}|null</pre>
+                <p><em>Returns what a buffered insert implies about its rowid.</em></p>
+                
 
                                     <h4>Parameters</h4>
                     <table class="table table-condensed table-hover">
                                                     <tr>
-                                <td>array</td>
-                                <td>$args </td>
-                                <td></td>
+                                <td>int</td>
+                                <td>$index </td>
+                                <td><p>The buffer index.</p>
+</td>
                             </tr>
                                             </table>
                 
                 
                                     <h4>Returns</h4>
-                    array
-                                            &mdash; 
+                    array{table: string, cleared: bool, offset: int, columns: string[]}|null
+                                            &mdash; <p>The prediction inputs, or NULL when this statement or its table cannot be read.</p>
+
                                                                                 </article>
         </div>
         <aside class="span4 detailsbar">
             <h1><i class="fas fa-arrow-down"></i></h1>
                                                             <dl>
                                                     <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div></a></dd>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_isSingleRowInsert" name="method_isSingleRowInsert" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">isSingleRowInsert()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">isSingleRowInsert(int  <span class="argument">$index</span>) : bool</pre>
+                <p><em>Returns whether a buffered statement is a plain single-row insert.</em></p>
+                <p>That is enough to know it changed exactly one row, which needs no schema and no replay.
+Unlike {@link entry()} this stays true for a blocked table: a later write to the same
+table changes which rowid this insert got, never how many rows it wrote.</p>
+
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>int</td>
+                                <td>$index </td>
+                                <td><p>The buffer index.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    bool
+                                            &mdash; <p>TRUE when the statement appends exactly one row.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
                                                                                                 
                                                             </dl>
             <h2>Tags</h2>
@@ -753,35 +756,34 @@ write to reconcile and <code class="prettyprint">bufferIndex</code> stays whatev
 
 																																						    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="method_normalizeArgs" name="method_normalizeArgs" class="anchor"></a>
+            <a id="method_suppliesRowid" name="method_suppliesRowid" class="anchor"></a>
             <article class="method">
-                <h3 class="private ">normalizeArgs()</h3>
+                <h3 class="public ">suppliesRowid()</h3>
                 <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">normalizeArgs(array  <span class="argument">$args</span>) : array</pre>
-                <p><em>Renders Drupal&#039;s arguments as parameters the host can bind.</em></p>
+                <pre class="signature" style="margin-right: 54px;">suppliesRowid(string[]  <span class="argument">$columns</span>, string|null  <span class="argument">$integerPrimaryKey</span>) : bool</pre>
+                <p><em>Returns whether a column list names the rowid itself.</em></p>
                 
 
                                     <h4>Parameters</h4>
                     <table class="table table-condensed table-hover">
                                                     <tr>
-                                <td>array</td>
-                                <td>$args </td>
-                                <td><p>The arguments as Drupal built them.</p>
+                                <td>string[]</td>
+                                <td>$columns </td>
+                                <td><p>Lower-cased column names.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>string|null</td>
+                                <td>$integerPrimaryKey </td>
+                                <td><p>The table's INTEGER PRIMARY KEY column, when it has one.</p>
 </td>
                             </tr>
                                             </table>
                 
-                                    <h4>Throws</h4>
-                    <dl>
-                                                    <dt>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\HostBridgeException</dt>
-                            <dd><p>If an argument is of a type the bridge cannot carry.</p>
-</dd>
-                                                                    </dl>
                 
                                     <h4>Returns</h4>
-                    array
-                                            &mdash; <p>The parameters, keys untouched so the host's named-to-positional
-rewriting still applies.</p>
+                    bool
+                                            &mdash; <p>TRUE when the insert chooses its own rowid, so SQLite does not append.</p>
 
                                                                                 </article>
         </div>
@@ -790,7 +792,7 @@ rewriting still applies.</p>
                             <span class="label label-info">static</span>
                                                             <dl>
                                                     <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Statement.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Statement</div></a></dd>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
                                                                                                 
                                                             </dl>
             <h2>Tags</h2>
@@ -800,16 +802,112 @@ rewriting still applies.</p>
         </aside>
     </div>
 
-														</div>
+																																																																																																																															    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_plainInsertColumns" name="method_plainInsertColumns" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">plainInsertColumns()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">plainInsertColumns(string  <span class="argument">$sql</span>, string  <span class="argument">$table</span>) : string[]|null</pre>
+                <p><em>Returns the columns of a plain single-row insert into one table.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$sql </td>
+                                <td><p>The statement.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>string</td>
+                                <td>$table </td>
+                                <td><p>The table SqlAnalyzer named, lower-cased.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    string[]|null
+                                            &mdash; <p>The lower-cased column names, or NULL when the statement is any other shape.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                            <span class="label label-info">static</span>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_isUnconditionalDelete" name="method_isUnconditionalDelete" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">isUnconditionalDelete()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">isUnconditionalDelete(string  <span class="argument">$sql</span>, string  <span class="argument">$table</span>) : bool</pre>
+                <p><em>Returns whether a statement empties a table outright.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$sql </td>
+                                <td><p>The statement.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>string</td>
+                                <td>$table </td>
+                                <td><p>The table SqlAnalyzer named, lower-cased.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    bool
+                                            &mdash; <p>TRUE for <code class="prettyprint">DELETE FROM t</code> with no WHERE, which is what a router rebuild opens with.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                            <span class="label label-info">static</span>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																							</div>
 	</section>
 
 	<div id="source-view" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="source-view-label" aria-hidden="true">
 		<div class="modal-header">
 			<button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-			<h3 id="source-view-label">Statement.php</h3>
+			<h3 id="source-view-label">RowidPlan.php</h3>
 		</div>
 		<div class="modal-body">
-			<pre data-src="files/src/Driver/Database/cfw_do_sqlite/Statement.php.txt" class="language-php line-numbers"></pre>
+			<pre data-src="files/src/Driver/Database/cfw_do_sqlite/RowidPlan.php.txt" class="language-php line-numbers"></pre>
 		</div>
 	</div>
 
