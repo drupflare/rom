@@ -10,6 +10,12 @@
 			"description": "drupal/core is the supported-range declaration for a driver, not a dependency to chase",
 			"matchPackageNames": ["drupal/core"],
 			"enabled": false
+		},
+		{
+			"description": "a driver resolves inside a Drupal site, so these majors are decided by drupal/core rather than by this package; symfony 8 and guzzle 3 are uninstallable on Drupal 11, which ships symfony 7.4 and guzzle 2.x",
+			"matchPackageNames": ["symfony/**", "guzzlehttp/**", "psr/**"],
+			"matchUpdateTypes": ["major"],
+			"enabled": false
 		}
 	]
 }
