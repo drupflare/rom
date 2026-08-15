@@ -60,6 +60,28 @@ class Connection extends SqliteDriverConnection
 	private ?TransactionBuffer $buffer = null;
 
 	/**
+	 * Whether a plain insert into each table is a simple append, and which column is its rowid.
+	 *
+	 * Kept for the life of the CONNECTION rather than of one buffer, and dropped when any DDL
+	 * runs. A per-buffer cache costs a `sqlite_master` read every time a transaction touches a
+	 * table it cannot predict -- which is every entity save, since those are the AUTOINCREMENT
+	 * tables -- so the refusal would have carried a permanent toll.
+	 *
+	 * @var array<string, array{appendable: bool, integerPrimaryKey: string|null}>
+	 */
+	private array $rowidSchema = [];
+
+	/**
+	 * Committed maximum rowid per table, for the life of one buffer.
+	 *
+	 * Frozen for exactly that long: nothing writes the committed database while a buffer is open,
+	 * since a speculative replay is rolled back and a commit closes the buffer first.
+	 *
+	 * @var array<string, int|null>
+	 */
+	private array $rowidMax = [];
+
+	/**
 	 * The engine version, cached after the first query that needs it.
 	 */
 	private ?string $engineVersion = null;
@@ -721,6 +743,16 @@ class Connection extends SqliteDriverConnection
 			);
 		}
 
+		// DDL can turn a table that appends into one that does not, so the memo it would be read
+		// from is dropped here rather than being kept correct. Conservative on a rolled-back
+		// buffer, which costs one re-read
+		if (
+			$kind === SqlAnalyzer::WRITE &&
+			preg_match('/^\s*(?:CREATE|DROP|ALTER)\b/i', $sql) === 1
+		) {
+			$this->rowidSchema = [];
+		}
+
 		if ($this->buffer === null) {
 			return $this->runDirect($sql, $params);
 		}
@@ -769,6 +801,7 @@ class Connection extends SqliteDriverConnection
 			);
 		}
 		$this->buffer = new TransactionBuffer();
+		$this->rowidMax = [];
 	}
 
 	/**
@@ -777,6 +810,7 @@ class Connection extends SqliteDriverConnection
 	public function discardBufferedTransaction(): void
 	{
 		$this->buffer = null;
+		$this->rowidMax = [];
 	}
 
 	/**
@@ -794,6 +828,7 @@ class Connection extends SqliteDriverConnection
 	{
 		$buffer = $this->buffer;
 		$this->buffer = null;
+		$this->rowidMax = [];
 
 		if ($buffer === null || $buffer->isEmpty()) {
 			return;
@@ -873,6 +908,12 @@ class Connection extends SqliteDriverConnection
 		$cached = $buffer->resolvedResult($index);
 		if ($cached !== null) {
 			return $cached['changes'];
+		}
+
+		// a single-row insert changed one row, which is arithmetic rather than a question for the
+		// engine. No schema is involved, so this holds even where the rowid cannot be predicted
+		if ($buffer->isSingleRowInsert($index)) {
+			return 1;
 		}
 
 		if (!$this->client()->supportsTransactions()) {
@@ -995,6 +1036,11 @@ class Connection extends SqliteDriverConnection
 			return $cached['lastInsertId'];
 		}
 
+		$predicted = $this->predictBufferedInsertId($buffer, $index);
+		if ($predicted !== null) {
+			return $predicted;
+		}
+
 		if (!$this->client()->supportsTransactions()) {
 			throw new UncommittedStateException(
 				sprintf(
@@ -1008,6 +1054,162 @@ class Connection extends SqliteDriverConnection
 		$result = $buffer->resolvedResult($index);
 
 		return $result !== null ? $result['lastInsertId'] : '0';
+	}
+
+	/**
+	 * Works out a buffered insert's rowid from arithmetic instead of a replay.
+	 *
+	 * SQLite gives an ordinary rowid table `max(rowid) + 1`, and nothing writes the committed
+	 * database while a buffer is open, so the answer is the committed maximum plus the appends
+	 * buffered since. RowidPlan holds the second half and refuses every statement shape whose
+	 * effect on the rowid is not an append; this holds the first half and refuses the two schema
+	 * shapes that break the arithmetic.
+	 *
+	 * @param TransactionBuffer $buffer
+	 *   The open buffer.
+	 * @param int $index
+	 *   The buffer index of the insert.
+	 *
+	 * @return string|null
+	 *   The rowid as a decimal string, or NULL when it cannot be known without replaying.
+	 */
+	private function predictBufferedInsertId(TransactionBuffer $buffer, int $index): ?string
+	{
+		$entry = $buffer->rowidPrediction($index);
+		if ($entry === null) {
+			return null;
+		}
+
+		$schema = $this->rowidSchemaFor($entry['table']);
+		if (!$schema['appendable']) {
+			return null;
+		}
+		if (RowidPlan::suppliesRowid($entry['columns'], $schema['integerPrimaryKey'])) {
+			return null;
+		}
+
+		$base = 0;
+		if (!$entry['cleared']) {
+			$base = $this->committedMaxRowid($entry['table']);
+			if ($base === null) {
+				return null;
+			}
+		}
+
+		return (string) ($base + $entry['offset']);
+	}
+
+	/**
+	 * Reads whether a plain insert into one table appends, and which column is its rowid.
+	 *
+	 * @param string $table
+	 *   The lower-cased table name.
+	 *
+	 * @return array{appendable: bool, integerPrimaryKey: string|null}
+	 *   A table whose schema cannot be read reports appendable FALSE, which is the replay path.
+	 */
+	private function rowidSchemaFor(string $table): array
+	{
+		if (isset($this->rowidSchema[$table])) {
+			return $this->rowidSchema[$table];
+		}
+
+		$facts = ['appendable' => false, 'integerPrimaryKey' => null];
+		try {
+			$schema = $this->client()->exec(
+				'SELECT sql FROM sqlite_master WHERE type = ? AND name = ?',
+				['table', $table],
+			);
+			$ddl = (string) ($schema['rows'][0]['sql'] ?? '');
+			if ($ddl !== '' && self::isAppendableDdl($ddl)) {
+				$facts = [
+					'appendable' => true,
+					'integerPrimaryKey' => self::integerPrimaryKeyColumn($ddl),
+				];
+			}
+		} catch (Exception) {
+			$facts = ['appendable' => false, 'integerPrimaryKey' => null];
+		}
+
+		$this->rowidSchema[$table] = $facts;
+		return $facts;
+	}
+
+	/**
+	 * Reads one table's committed maximum rowid, once per buffer.
+	 *
+	 * Goes straight to the host rather than through runStatement(), and that is the point: the
+	 * committed maximum is wanted precisely because the buffered rows are not in it. Routing this
+	 * through the buffer would see the table is dirty and open the replay this exists to avoid.
+	 *
+	 * @param string $table
+	 *   The lower-cased table name.
+	 *
+	 * @return int|null
+	 *   The maximum, 0 for an empty table, or NULL when the answer is not a number.
+	 */
+	private function committedMaxRowid(string $table): ?int
+	{
+		if (array_key_exists($table, $this->rowidMax)) {
+			return $this->rowidMax[$table];
+		}
+
+		$max = null;
+		try {
+			// the name came back from sqlite_master, so it exists exactly as spelled; quoted
+			// rather than interpolated bare because a table may be named after a keyword.
+			// `_rowid_` rather than `rowid`, which a column of that name would shadow
+			$result = $this->client()->exec(
+				sprintf('SELECT MAX(_rowid_) AS m FROM "%s"', str_replace('"', '""', $table)),
+				[],
+			);
+			$value = $result['rows'][0]['m'] ?? null;
+			// NULL is an empty table, whose next rowid is 1; a non-numeric answer is not one this
+			// can reason about, so it falls back rather than guessing zero
+			$max = $value === null ? 0 : (is_numeric($value) ? (int) $value : null);
+		} catch (Exception) {
+			$max = null;
+		}
+
+		$this->rowidMax[$table] = $max;
+		return $max;
+	}
+
+	/**
+	 * Returns whether a table's DDL allows a plain insert to be a simple append.
+	 *
+	 * @param string $ddl
+	 *   The CREATE TABLE statement from sqlite_master.
+	 *
+	 * @return bool
+	 *   FALSE for WITHOUT ROWID, which has no rowid at all, and for AUTOINCREMENT, whose next id
+	 *   comes from sqlite_sequence.
+	 */
+	private static function isAppendableDdl(string $ddl): bool
+	{
+		if (preg_match('/\bWITHOUT\s+ROWID\b/i', $ddl) === 1) {
+			return false;
+		}
+		return preg_match('/\bAUTOINCREMENT\b/i', $ddl) !== 1;
+	}
+
+	/**
+	 * Names the column that is an alias for the rowid, when the table has one.
+	 *
+	 * @param string $ddl
+	 *   The CREATE TABLE statement from sqlite_master.
+	 *
+	 * @return string|null
+	 *   The lower-cased column name, or NULL when the table has no INTEGER PRIMARY KEY.
+	 */
+	private static function integerPrimaryKeyColumn(string $ddl): ?string
+	{
+		$matched = preg_match(
+			'/[(,]\s*("?)([A-Za-z_][A-Za-z0-9_$]*)\1\s+INTEGER\s+PRIMARY\s+KEY\b/i',
+			$ddl,
+			$parts,
+		);
+		return $matched === 1 ? strtolower($parts[2]) : null;
 	}
 
 	/**
