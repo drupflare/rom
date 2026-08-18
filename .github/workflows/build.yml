@@ -2,9 +2,9 @@ name: Build Driver
 
 on:
   push:
-    branches: [master, feat/*, ver/*, renovate/*]
+    branches: [master, feat/*, ver/*]
   pull_request:
-    branches: [master, feat/*, ver/*, renovate/*]
+    branches: [master, feat/*, ver/*]
   workflow_dispatch:
   schedule:
     - cron: '20 4 * * *'

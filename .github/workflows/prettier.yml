@@ -1,6 +1,11 @@
 name: Check Prettier Formatting
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [master, ver/*, feat/*]
+  pull_request:
+    branches: [master, ver/*, feat/*]
+  workflow_dispatch:
 
 jobs:
   format:
