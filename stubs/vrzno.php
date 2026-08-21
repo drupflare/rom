@@ -2,9 +2,9 @@
 
 /**
  * @file
- * Declaration-only stub for the vrzno extension, for STATIC ANALYSIS ONLY.
+ * Declaration-only stub for the vrzno extension, for static analysis only.
  *
- * THIS FILE MUST NEVER BE LOADED AT RUNTIME. `vrzno` registers `vrzno_env()` when the extension
+ * **This file must never be loaded at runtime.** `vrzno` registers `vrzno_env()` when the extension
  * initialises, so including this inside the wasm build is a hard `Cannot redeclare vrzno_env()`
  * fatal during boot, before a byte is served. Three mechanisms keep it out and all three are
  * load-bearing:
@@ -15,7 +15,7 @@
  * 3. `worker/scripts/gen-driver-assets.ts` skips `stubs/` when packing this module into
  *    `assets/driver.json`, which is the copy that executes on the edge.
  *
- * WHY IT EXISTS. Every call site already guards with `function_exists('vrzno_env')` -- see
+ * Every call site already guards with `function_exists('vrzno_env')` -- see
  * `CfwSqlClient::env()` and `Install\Tasks`. PHPStan understands that narrowing and reports
  * nothing; intelephense does not and has no inline suppression for an undefined function. The
  * alternative was disabling `undefinedFunctions` wholesale, which would hide every genuinely

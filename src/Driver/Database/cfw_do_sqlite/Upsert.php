@@ -9,12 +9,12 @@ use Exception;
 /**
  * Upsert that respects the host's 100-bound-parameter ceiling.
  *
- * WHY THIS EXISTS. Durable Object SQLite refuses a statement carrying more than 100
+ * Durable Object SQLite refuses a statement carrying more than 100
  * bound parameters: 100 succeeds, 101 fails with `too many SQL variables:
  * SQLITE_ERROR`. Bisected directly through `/sql` against a real `ctx.storage.sql`,
  * not inferred from PDO or from documentation.
  *
- * Core's sqlite `Upsert::__toString()` builds ONE multi-row statement --
+ * Core's sqlite `Upsert::__toString()` builds **one** multi-row statement --
  * `INSERT INTO t (...) VALUES (...), (...), ... ON CONFLICT ...` -- so the generic
  * `execute()` flattens every row into a single parameter list of rows x fields.
  *
@@ -24,7 +24,7 @@ use Exception;
  * `cache_discovery` write (82 entries, 574 placeholders) made every render 500. Any cache
  * flush on a live site reproduces it, so it is not specific to a freshly packed database.
  *
- * The fix is to re-batch by PLACEHOLDER count rather than by row count, because the limit
+ * The fix is to re-batch by **placeholder** count rather than by row count, because the limit
  * counts parameters and a row's width is not fixed. Core's row-based chunk cannot express
  * that; this can.
  *

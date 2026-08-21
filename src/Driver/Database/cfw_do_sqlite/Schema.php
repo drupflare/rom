@@ -21,15 +21,15 @@ use Drupal\sqlite\Driver\Database\sqlite\Schema as SqliteDriverSchema;
  * SQLITE_ERROR_MISSING_COLLSEQ" - so every CREATE TABLE the core schema emits
  * would fail. The builtin NOCASE is substituted instead.
  *
- * THE LIMITATION THAT BUYS. Builtin NOCASE folds ASCII only, also measured:
+ * Builtin NOCASE folds ASCII only, also measured:
  * 'Hello World' matches 'hello world', 'Unicode' with a diaeresis does not match
  * its lower-case form. So case-insensitive comparison of non-ASCII text is
- * case-SENSITIVE on this driver. That affects username and email uniqueness,
+ * case-sensitive on this driver. That affects username and email uniqueness,
  * taxonomy term matching and LIKE, for non-ASCII text only. It is a documented
  * product limitation rather than something the driver can fix, because the fix
  * lives in the runtime's SQLite build.
  *
- * ONE MORE THING CANNOT BE INHERITED, and it is the table prefix. Every other
+ * One more thing cannot be inherited, and it is the table prefix. Every other
  * prefixed method here works unchanged, because getPrefixInfo() puts the prefix
  * on the front of the table name and this driver's prefix is exactly that. Only
  * findTables() reads the prefix the other way round - the core sqlite version

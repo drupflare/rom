@@ -11,7 +11,7 @@ namespace Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite;
  * the driver already holds: the committed maximum, plus the inserts buffered since. This class
  * holds the second half -- what the buffer implies -- and `Connection` supplies the first.
  *
- * IT REFUSES FAR MORE THAN IT ANSWERS, and every refusal falls back to the replay that was
+ * It refuses far more than it answers, and every refusal falls back to the replay that was
  * always there, so a case this cannot read is slow rather than wrong:
  *
  *   - anything but `INSERT INTO t (cols) VALUES (...)` with one tuple and no nested parentheses:

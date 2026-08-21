@@ -26,7 +26,7 @@ use Exception;
  *
  * Two behaviours are worth knowing before reading a value out of this class.
  *
- * COLUMN VALUES ARE STRINGS OR NULL. The core sqlite driver sets PDO's
+ * **Column values are strings or NULL.** The core sqlite driver sets PDO's
  * ATTR_STRINGIFY_FETCHES, so Drupal is written against string columns; this
  * driver matches that. It also has to: the wasm build is 32-bit, so a SQLite
  * INTEGER above 2^31 crosses the boundary as a ['__phpint' => '<digits>']
@@ -34,7 +34,7 @@ use Exception;
  * timestamp or a file size therefore reaches Drupal as an exact decimal string
  * instead of a wrapped negative int or a leaked array.
  *
- * ROW COUNTS CAN BE DEFERRED. While a Drupal transaction is open the connection
+ * **Row counts can be deferred.** While a Drupal transaction is open the connection
  * buffers writes instead of running them, so the number of rows a buffered
  * UPDATE or DELETE changed is not known when execute() returns. rowCount() then
  * resolves it on demand, which costs a speculative replay of the buffer.
@@ -84,14 +84,14 @@ final class Statement extends StatementBase implements StatementInterface
 	/**
 	 * Where an oversized read can be split, or NULL when it cannot be.
 	 *
-	 * WHY THIS EXISTS. The host caps a statement at 100 bound parameters. `Upsert` already chunks
-	 * WRITES against that ceiling, and the read path had no equivalent because nothing had ever
+	 * The host caps a statement at 100 bound parameters. `Upsert` already chunks
+	 * **writes** against that ceiling, and the read path had no equivalent because nothing had ever
 	 * generated an oversized read -- until a module install made Drupal's config storage load 169
 	 * names in one `IN()`, which failed with "too many SQL variables" and left the install
 	 * half-applied: `core.extension` written, the rest of the install not.
 	 *
-	 * REFUSES FAR MORE THAN IT ACCEPTS, and every refusal is a case where concatenating batches
-	 * would silently return the wrong answer rather than an error:
+	 * It refuses far more than it accepts, and every refusal is a case where concatenating
+	 * batches would silently return the wrong answer rather than an error:
 	 *
 	 *   - not a SELECT: splitting a write changes what it writes.
 	 *   - `ORDER BY`, `LIMIT` or `OFFSET`: global ordering and cut-off cannot be reconstructed from
@@ -100,7 +100,7 @@ final class Statement extends StatementBase implements StatementInterface
 	 *     per-batch fold is a different number.
 	 *   - more than one placeholder `IN()` list, or an `IN()` holding anything but placeholders:
 	 *     which list to split is then a guess.
-	 *   - a statement whose NON-list parameters alone already exceed the ceiling: no batch size
+	 *   - a statement whose non-list parameters alone already exceed the ceiling: no batch size
 	 *     helps, so failing loudly is correct.
 	 *
 	 * @return array{prefix: string, names: list<string>, suffix: string}|null

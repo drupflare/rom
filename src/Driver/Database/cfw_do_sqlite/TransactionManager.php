@@ -11,7 +11,7 @@ use Exception;
 /**
  * Maps Drupal's begin/commit transaction API onto a write buffer.
  *
- * WHY NOT THE OBVIOUS THING. Every other Drupal driver implements the four
+ * Every other Drupal driver implements the four
  * client methods below by sending SQL or calling PDO::beginTransaction().
  * Neither is available: ctx.storage.sql refuses transaction control outright,
  * measured, with "To execute a transaction, please use the
@@ -19,7 +19,7 @@ use Exception;
  * of ...". transactionSync() does work, but it is callback-scoped, and Drupal's
  * API is begin-commit. The two do not compose, so nothing here emits SQL.
  *
- * WHAT IT DOES INSTEAD. Beginning a transaction opens a buffer on the
+ * Beginning a transaction opens a buffer on the
  * connection; every write issued while it is open is withheld rather than run.
  * Committing replays the buffer inside one host-side transactionSync(). Rolling
  * back discards it, which is why a rollback here cannot fail. A savepoint is an

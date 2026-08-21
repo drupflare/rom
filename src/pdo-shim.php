@@ -56,7 +56,7 @@ class PDO
 	/**
 	 * The two fetch FLAGS, which core ORs into FETCH_CLASS.
 	 *
-	 * PHP 8.5 REPACKED THESE and nothing else in this file moved with them.
+	 * PHP 8.5 repacked these and nothing else in this file moved with them.
 	 * php_pdo_driver.h widened PDO_FETCH_FLAGS from 0xFFFF0000 to 0xFFFFFFF0 and
 	 * moved the flags down from the high half-word to bits 5-9, so CLASSTYPE went
 	 * 0x00040000 -> 1<<7 and PROPS_LATE went 0x00100000 -> 1<<8. Read out of the

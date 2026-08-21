@@ -7,9 +7,12 @@ namespace Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite;
 use Drupal\Core\Database\Connection as DatabaseConnection;
 use Drupal\Core\Database\InvalidQueryException;
 use Drupal\Core\Database\StatementInterface;
+use Drupal\Core\Database\Transaction\TransactionManagerBase;
 use Drupal\Core\Database\Transaction\TransactionManagerInterface;
 use Drupal\sqlite\Driver\Database\sqlite\Connection as SqliteDriverConnection;
 use Exception;
+use ReflectionProperty;
+use Throwable;
 
 /**
  * Drupal connection to ctx.storage.sql inside a Durable Object.
@@ -22,22 +25,22 @@ use Exception;
  *
  * Four differences are worth reading before using this class.
  *
- * NO PDO. The client connection is a CfwSqlClient, which calls a function the
+ * **No PDO.** The client connection is a CfwSqlClient, which calls a function the
  * host installed on the PHP Module. PHP runs inside the Durable Object, so a
  * query is a synchronous call across the wasm boundary, not a round trip.
  *
- * NO USER FUNCTIONS OR COLLATIONS. ctx.storage.sql has neither, measured, so the
+ * **No user functions or collations.** ctx.storage.sql has neither, measured, so the
  * dozen SQL functions the core driver registers through
  * PDO::sqliteCreateFunction() do not exist and NOCASE_UTF8 does not exist.
  * Schema substitutes the builtin NOCASE, which folds ASCII only; see Schema.
  *
- * NO TRANSACTION CONTROL. BEGIN is refused by the runtime. Writes issued while a
+ * **No transaction control.** BEGIN is refused by the runtime. Writes issued while a
  * Drupal transaction is open are buffered here and replayed inside one host-side
  * transactionSync() at commit. That makes reads the interesting case, and
  * runStatement() is where it is handled. What a replay learns is kept on the
  * buffer, so a second question about the same buffered statement costs nothing.
  *
- * TABLE PREFIXES ARE NAME-MANGLED, NOT ATTACHED. The core sqlite driver
+ * **Table prefixes are name-mangled, not attached.** The core sqlite driver
  * implements a prefix by attaching one database file per prefix and emitting
  * "prefix"."table"; there are no files and no ATTACH here, so that mechanism has
  * no analogue. The base Connection's own mechanism does, and it is the one used:
@@ -811,6 +814,70 @@ class Connection extends SqliteDriverConnection
 	{
 		$this->buffer = null;
 		$this->rowidMax = [];
+	}
+
+	/**
+	 * Discards a transaction a halted request left open, and says what that cost.
+	 *
+	 * On a real SAPI this state cannot exist: the process dies, the Transaction object is
+	 * destructed and TransactionManagerBase rolls back. Here the interpreter outlives the request
+	 * and Database::$connections holds this object, so a script that ends before its commit leaves
+	 * the buffer open -- and every write the NEXT request makes is withheld into a buffer nobody
+	 * will replay. Measured on a warm object: the following render answered 200 with the same byte
+	 * count as a clean one, wrote nothing, and left isBuffering() still TRUE.
+	 *
+	 * Both halves have to go. Discarding the buffer alone leaves Drupal's own stack believing a
+	 * transaction is open, so the next startTransaction() records a savepoint into a buffer that no
+	 * longer exists and the request dies with UncommittedStateException instead.
+	 *
+	 * The manager is dropped rather than unwound. Unpiling would run the rollback path for stack
+	 * items whose savepoints are indexes into the buffer this method just threw away, and
+	 * transactionManager() rebuilds a clean one on next use.
+	 *
+	 * Safe only at a REQUEST BOUNDARY, where anything open is by definition orphaned. Calling it
+	 * inside a live transaction discards writes the caller believes it has made.
+	 *
+	 * @return array{buffered: int, stack: int, manager: bool}
+	 *   How many buffered statements and stack items were discarded and whether the manager was
+	 *   dropped. All zero and FALSE on a clean boundary, which is what a passing probe looks like.
+	 */
+	public function discardOrphanedTransaction(): array
+	{
+		$out = ['buffered' => 0, 'stack' => 0, 'manager' => false];
+
+		if ($this->buffer !== null) {
+			$out['buffered'] = $this->buffer->count();
+			$this->buffer = null;
+			$this->rowidMax = [];
+		}
+
+		if (!isset($this->transactionManager)) {
+			return $out;
+		}
+
+		$manager = $this->transactionManager;
+		// emptied before the manager is dropped, because TransactionManagerBase::__destruct()
+		// asserts the stack is empty and an assertion build would fatal on the way out
+		foreach (['stack', 'voidedItems', 'postTransactionCallbacks'] as $name) {
+			try {
+				$property = new ReflectionProperty(TransactionManagerBase::class, $name);
+				if ($name === 'stack') {
+					$out['stack'] = count((array) $property->getValue($manager));
+				}
+				$property->setValue($manager, []);
+			} catch (Throwable) {
+				// a runtime that renamed the property should lose this reset, not refuse to serve
+			}
+		}
+
+		// REPLACED rather than unset. The property is typed and non-nullable, so unset() would leave
+		// it uninitialised for transactionManager() to rebuild -- which works, and which phpstan
+		// refuses because a subclass may declare property hooks on it. Building the replacement here
+		// is the same outcome with no uninitialised window.
+		$this->transactionManager = $this->driverTransactionManager();
+		$out['manager'] = true;
+
+		return $out;
 	}
 
 	/**
