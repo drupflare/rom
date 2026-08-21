@@ -4,14 +4,14 @@
  * @file
  * Runs Drupal's own installer against the driver, end to end.
  *
- * WHY THIS IS SEPARATE FROM THE DRIVER SUITE. run-driver-suite.php drives the
+ * Separate from the driver suite because run-driver-suite.php drives the
  * driver directly, in transactions of five or six statements. An install is a
  * different shape and the only one that exercises it: hundreds of statements in
  * one transaction, DDL and DML interleaved, and Drupal's own error-recovery
  * idioms firing inside an open transaction. It found a defect nothing else
  * could - see Connection::speculate().
  *
- * WHAT IT PROVES AND WHAT IT DOES NOT. The host is FakeHost, so it proves the
+ * What it proves and what it does not. The host is FakeHost, so it proves the
  * PHP half against a real SQLite. It says nothing about ctx.storage.sql itself.
  *
  * The acceptance check is a CONTROL rather than a hard-coded expectation: the

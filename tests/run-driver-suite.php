@@ -4,12 +4,12 @@
  * @file
  * Drives the cfw_do_sqlite driver against a stand-in host.
  *
- * WHAT THIS PROVES AND WHAT IT DOES NOT. The host here is PDO SQLite speaking
+ * What this proves and what it does not. The host here is PDO SQLite speaking
  * the same JSON contract as src/do-sqlite.js, not ctx.storage.sql. So it proves
  * the PHP half: the write buffering, the read/write overlap analysis, the
  * savepoint truncation, the function substitution, the codec normalisation and
  * the integration with Drupal's own query builders and schema handling. It does
- * NOT prove anything about the Durable Object runtime - whether it accepts
+ * not prove anything about the Durable Object runtime - whether it accepts
  * PRAGMA table_info, whether its SQLite has concat(), or how it behaves across
  * events. Those need the Worker.
  *
@@ -1071,7 +1071,7 @@ ok('a marked placeholder that is not bound refuses', $markerRefused);
 
 // #region the cost counters, which the Cost table is built on
 //
-// WHY THESE EXIST AS ASSERTIONS AND NOT AS AN INSTRUMENTED RUN. The three figures in README's
+// These are assertions and not an instrumented run. The three figures in README's
 // Cost table -- transactions opened, of which speculative, statements executed inside replays --
 // came from an ad-hoc instrumented build and could not be reproduced from the shipping class.
 // A replay cache is the next planned change to `readThroughReplay()`, and a cache with no
@@ -1174,7 +1174,7 @@ ok(
 
 // #region the O(W*R) term, made visible
 //
-// THIS IS THE ASSERTION THE COUNTERS EXIST FOR. `readThroughReplay()` re-sends
+// This is the assertion the counters exist for. `readThroughReplay()` re-sends
 // TransactionBuffer::statements() IN FULL for every dirty read, so N writes each followed by a
 // read replay 1 + 2 + ... + N = N(N+1)/2 statements. At N=3 that is 6, from 3 writes.
 //
@@ -1289,7 +1289,7 @@ ok(
 // #endregion
 // #region the replay cache
 //
-// WHAT IT CLOSES AND WHAT IT DOES NOT, because the second half is the part that is easy to
+// What it closes and what it does not, because the second half is easy to
 // overclaim. A replay always starts from the same committed state and runs buffer[0..k] in
 // order, so the result of statement i depends on the buffer's first i+1 entries and nothing
 // else -- and those never change while they are buffered. So an answer learned once is still
@@ -1436,7 +1436,7 @@ ok('CONTROL: and reports the same 2 rows', $uncachedRows === 2, (string) $uncach
 $cacheTransaction->rollBack();
 unset($cacheTransaction);
 
-// A SAVEPOINT ROLLBACK IS THE ONE WAY THE BUFFER SHRINKS, so it is the one way a cached answer
+// A savepoint rollback is the one way the buffer shrinks, so it is the one way a cached answer
 // can go stale: a fresh statement written at a discarded index would otherwise inherit the
 // discarded one's row count. The two updates below change a different number of rows on
 // purpose, so a stale answer is visible rather than merely possible.
@@ -1592,7 +1592,7 @@ ok(
 		->fetchField() === '/route/19',
 );
 
-// THE SHAPE, not the number. A replay per chunk over a growing buffer is quadratic in the rows,
+// The shape, not the number. A replay per chunk over a growing buffer is quadratic in the rows,
 // so doubling both the rows and the chunks would take 55 re-sent statements to 210. Measuring it
 // at two sizes is what tells a constant from a small quadratic; one size cannot.
 $rebuiltWide = rebuild($rowidConnection, 'rt', 40, 5);
@@ -1608,7 +1608,7 @@ ok(
 	$rebuiltWide['lastId'],
 );
 
-// THE AGREEMENT CHECK. A predicted id that the engine disagrees with would be silently wrong
+// The agreement check. A predicted id that the engine disagrees with would be silently wrong
 // everywhere, so the two are made to answer the same question: the prediction first, then a
 // dirty read, which replays the whole buffer and overwrites the answer with the engine's.
 $agreeTransaction = $rowidConnection->startTransaction();
@@ -2060,7 +2060,7 @@ ok(
 $prefixTransaction->rollBack();
 unset($prefixTransaction);
 
-// A PERIOD IS THE ONE PREFIX CHARACTER THAT CANNOT WORK. Core allows it and every other driver
+// A period is the one prefix character that cannot work. Core allows it and every other driver
 // reads it as a schema selector; there is no second schema here to select.
 ok(
 	'PREFIX_PATTERN accepts what can be mangled',
