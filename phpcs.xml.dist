@@ -64,5 +64,6 @@
 		<exclude name="Squiz.WhiteSpace.FunctionSpacing.AfterLast" />
 		<exclude name="Squiz.WhiteSpace.FunctionSpacing.BeforeFirst" />
 		<exclude name="Drupal.Classes.UseGlobalClass.RedundantUseStatement" />
+		<exclude name="VariableAnalysis.CodeAnalysis.VariableAnalysis.UnusedVariable" />
 	</rule>
 </ruleset>
