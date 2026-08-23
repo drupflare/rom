@@ -2113,6 +2113,175 @@ try {
 }
 ok('the schema refuses a connection that is not this driver', $wrongSchema);
 // #endregion
+// #region P43: three platform limits the driver now accommodates or declares
+//
+// Each one was found by a REAL module rather than by reading the limits page, and each keeps the
+// shape `splitPointFor()` established: refuse far more than you accept, and say why in the
+// refusal. The one that is DECLARED rather than accommodated is declared because the
+// accommodation was priced and lost.
+echo "\nP43: LIKE widening, split writes, and the record cap\n";
+
+// --- the 50-byte LIKE cap ---------------------------------------------------
+//
+// `escapeLike()` shortens nothing, so "%$search%" with a 60-character query is 62 bytes and the
+// host answers "pattern too complex". Six mantle2 controllers trip it.
+ok(
+	'widenLikePattern leaves a pattern that already fits alone',
+	SqlAnalyzer::widenLikePattern('%short%', 50) === '%short%',
+);
+$long = '%' . str_repeat('n', 80) . '%';
+$widened = SqlAnalyzer::widenLikePattern($long, 50);
+ok(
+	'an oversized pattern is widened rather than refused',
+	is_string($widened),
+	var_export($widened, true),
+);
+ok(
+	'and the widened form fits the ceiling',
+	strlen(SqlAnalyzer::likeToGlob((string) $widened)) <= 50,
+	(string) strlen(SqlAnalyzer::likeToGlob((string) $widened)),
+);
+// THE PROPERTY THAT MAKES THE POST-FILTER SOUND: everything the original matched, the widened
+// pattern matches too. Asserted rather than argued, over the same hostile alphabet the GLOB
+// differential uses
+$supersetHolds = true;
+$seedP43 = 7;
+$rndP43 = function () use (&$seedP43) {
+	$seedP43 = ($seedP43 * 1103515245 + 12345) & 0x7fffffff;
+	return $seedP43 / 0x7fffffff;
+};
+for ($i = 0; $i < 400; $i++) {
+	$needle = '';
+	$n = 60 + (int) floor($rndP43() * 20);
+	for ($j = 0; $j < $n; $j++) {
+		$needle .= chr(97 + (int) floor($rndP43() * 26));
+	}
+	$original = '%' . $needle . '%';
+	$wide = SqlAnalyzer::widenLikePattern($original, 50);
+	if (!is_string($wide)) {
+		$supersetHolds = false;
+		break;
+	}
+	// a subject the ORIGINAL matches must also be matched by the widened pattern
+	$subject = 'xx' . $needle . 'yy';
+	$toRegex = static function (string $like): string {
+		$out = '';
+		for ($k = 0; $k < strlen($like); $k++) {
+			$ch = $like[$k];
+			$out .= $ch === '%' ? '.*' : ($ch === '_' ? '.' : preg_quote($ch, '/'));
+		}
+		return '/^' . $out . '$/sD';
+	};
+	if (
+		preg_match($toRegex($original), $subject) !== 1 ||
+		preg_match($toRegex($wide), $subject) !== 1
+	) {
+		$supersetHolds = false;
+		break;
+	}
+}
+ok('the widened pattern is a SUPERSET of the original, over 400 cases', $supersetHolds);
+
+// THE SELECTIVITY FLOOR, and it is what stops the accommodation being worse than the limit.
+// Bracket-quoting triples every metacharacter, so a pattern of 40 asterisks widens only by
+// throwing most of itself away -- and `%a%` scans the table and ships nearly every row across the
+// bridge for PHP to discard. Below the floor the driver refuses, exactly as it did before.
+ok(
+	'a pattern that cannot keep enough of itself returns NULL rather than a table scan',
+	SqlAnalyzer::widenLikePattern(str_repeat('*', 40), 50, 20) === null,
+);
+ok(
+	'the floor is what refuses it, not the ceiling: a lower floor widens the same pattern',
+	is_string(SqlAnalyzer::widenLikePattern(str_repeat('*', 40), 50, 4)),
+);
+ok(
+	'and a needle of real text keeps far more than the floor',
+	strlen(rtrim((string) SqlAnalyzer::widenLikePattern($long, 50), '%')) >= 40,
+	(string) strlen(rtrim((string) SqlAnalyzer::widenLikePattern($long, 50), '%')),
+);
+
+// UTF-8: cutting mid-codepoint would leave a broken sequence that matches nothing, which is the
+// opposite of a superset
+$utf8 = str_repeat("\u{00E9}", 40);
+$utf8Wide = SqlAnalyzer::widenLikePattern($utf8, 50);
+ok('a multibyte pattern widens on a character boundary', is_string($utf8Wide));
+ok(
+	'and the widened form is still valid UTF-8',
+	is_string($utf8Wide) && SqlAnalyzer::endsOnUtf8Boundary(rtrim((string) $utf8Wide, '%')),
+);
+ok('endsOnUtf8Boundary rejects a truncated sequence', !SqlAnalyzer::endsOnUtf8Boundary("a\xC3"));
+ok('and accepts a complete one', SqlAnalyzer::endsOnUtf8Boundary("a\u{00E9}"));
+
+// --- the split write --------------------------------------------------------
+//
+// `splitPointFor()` refused every non-SELECT, so strata's compactor -- one
+// `DELETE ... WHERE hash IN (...)` over the whole removed set -- died on a 101-frame sweep.
+[$p43Host, $p43Conn] = connect();
+$p43Conn->runStatement('CREATE TABLE "j" ("hash" TEXT, "payload" TEXT)', []);
+$names = [];
+$args = [];
+for ($i = 0; $i < 130; $i++) {
+	$names[] = ':h' . $i;
+	$args[':h' . $i] = 'hash-' . $i;
+}
+$deleteSql = 'DELETE FROM "j" WHERE "hash" IN (' . implode(', ', $names) . ')';
+$deleteStmt = $p43Conn->prepareStatement($deleteSql, [], true);
+$beforeCalls = $p43Host->execCalls;
+$deleteStmt->execute($args);
+ok(
+	'an oversized DELETE ... IN is split rather than refused',
+	$p43Host->execCalls - $beforeCalls >= 2,
+	(string) ($p43Host->execCalls - $beforeCalls),
+);
+// the narrowing is exactly two statement kinds wide, and everything else keeps the old refusal
+$insertSql = 'INSERT INTO "j" ("hash") VALUES (' . implode('), (', $names) . ')';
+$insertThrew = false;
+try {
+	$p43Conn->prepareStatement($insertSql, [], true)->execute($args);
+} catch (Throwable) {
+	$insertThrew = true;
+}
+ok('an oversized INSERT is still refused, because there is no IN list to partition', $insertThrew);
+
+$limited = 'DELETE FROM "j" WHERE "hash" IN (' . implode(', ', $names) . ') LIMIT 5';
+$limitThrew = false;
+try {
+	$p43Conn->prepareStatement($limited, [], true)->execute($args);
+} catch (Throwable) {
+	$limitThrew = true;
+}
+ok('a DELETE ... LIMIT is still refused, because the cut cannot be reconstructed', $limitThrew);
+
+// --- the record cap, DECLARED ----------------------------------------------
+[$capHost, $capConn] = connect();
+$capConn->runStatement('CREATE TABLE "j" ("hash" TEXT, "payload" TEXT)', []);
+$capMessage = '';
+try {
+	$capConn->runStatement('INSERT INTO "j" ("payload") VALUES (:p)', [
+		':p' => str_repeat('x', Connection::MAX_RECORD_BYTES + 1),
+	]);
+} catch (Throwable $e) {
+	$capMessage = $e->getMessage();
+}
+ok('an oversized value is refused rather than truncated', $capMessage !== '');
+ok('the refusal names the placeholder', str_contains($capMessage, ':p'), $capMessage);
+ok('and the cap', str_contains($capMessage, (string) Connection::MAX_RECORD_BYTES), $capMessage);
+ok(
+	'and says the driver deliberately does not chunk it',
+	str_contains($capMessage, 'rows-written'),
+	$capMessage,
+);
+// CONTROL: a value one byte under the cap is not refused, or the check would be a blanket ban
+$underThrew = false;
+try {
+	$capConn->runStatement('INSERT INTO "j" ("payload") VALUES (:p)', [
+		':p' => str_repeat('x', Connection::MAX_RECORD_BYTES),
+	]);
+} catch (Throwable) {
+	$underThrew = true;
+}
+ok('CONTROL: a value AT the cap is accepted', !$underThrew);
+// #endregion
 echo "\nhost calls: {$host->execCalls} single, {$host->txnCalls} transactional ({$host->speculativeCalls} rolled back over {$host->replayedStatements} replayed statements)\n";
 echo "\n$pass passed, $fail failed\n";
 exit($fail === 0 ? 0 : 1);
