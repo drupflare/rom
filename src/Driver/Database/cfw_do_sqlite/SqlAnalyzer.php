@@ -487,4 +487,101 @@ final class SqlAnalyzer
 
 		return $out;
 	}
+
+	/**
+	 * Widens a LIKE pattern until its GLOB translation fits the host's ceiling.
+	 *
+	 * THE RESULT IS A SUPERSET, NEVER AN EQUIVALENT, and every caller has to treat it that way.
+	 * `%needle%` truncated to `%need%` matches everything the original matched and more, so a
+	 * caller must re-apply the original pattern to the rows that come back. `Connection` does
+	 * exactly that, and refuses to widen at all where it cannot.
+	 *
+	 * TRUNCATION HAPPENS IN LIKE SPACE, NOT GLOB SPACE, and that is a correctness point rather
+	 * than a convenience: bracket-quoting expands one metacharacter into three bytes (`*` becomes
+	 * `[*]`), so cutting a GLOB string can land inside a bracket group and produce a pattern that
+	 * is invalid or, worse, means something else. Cutting the LIKE first and re-translating cannot.
+	 *
+	 * A trailing `\` is never left behind: it would escape whatever the appended `%` is, turning a
+	 * wildcard into a literal and making the result NOT a superset.
+	 *
+	 * **THERE IS A FLOOR, AND IT IS NOT A STYLE CHOICE.** Widening trades selectivity for a pattern
+	 * the engine will accept, and a one-character prefix is not a trade -- `%a%` scans the table and
+	 * ships nearly every row across the bridge for PHP to discard. That turns a clean, named refusal
+	 * into an unbounded read, which is worse than the limit. Below `$minRetainedBytes` of the
+	 * original the answer is NULL and the caller refuses.
+	 *
+	 * @param string $pattern
+	 *   The LIKE pattern, before translation.
+	 * @param int $maxGlobBytes
+	 *   The ceiling the translated pattern must fit.
+	 * @param int $minRetainedBytes
+	 *   How much of the original must survive for the widened form to still be selective.
+	 *
+	 * @return string|null
+	 *   A wider LIKE pattern whose GLOB form fits, or NULL when no prefix does so while retaining
+	 *   enough of the original to be worth running.
+	 */
+	public static function widenLikePattern(
+		string $pattern,
+		int $maxGlobBytes,
+		int $minRetainedBytes = 8,
+	): ?string {
+		if (strlen(self::likeToGlob($pattern)) <= $maxGlobBytes) {
+			return $pattern;
+		}
+		// one byte is reserved for the '%' this appends
+		for ($take = strlen($pattern) - 1; $take >= max(1, $minRetainedBytes); $take--) {
+			$head = substr($pattern, 0, $take);
+			// never cut immediately after a backslash: the escape would consume the appended '%'
+			if (substr_count($head, '\\') > 0 && str_ends_with($head, '\\')) {
+				continue;
+			}
+			// nor mid-codepoint, or the widened pattern carries a broken UTF-8 sequence that
+			// matches nothing rather than more
+			if (!self::endsOnUtf8Boundary($head)) {
+				continue;
+			}
+			$candidate = $head . '%';
+			if (strlen(self::likeToGlob($candidate)) <= $maxGlobBytes) {
+				return $candidate;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Whether a byte string ends on a complete UTF-8 character.
+	 *
+	 * Written out rather than using `mb_check_encoding`, because mbstring is absent on the wasm
+	 * build and the polyfill this runtime supplies has measured divergences. The question here is
+	 * narrow enough not to need either: a continuation byte is `10xxxxxx`, and a lead byte
+	 * announces its own length.
+	 */
+	public static function endsOnUtf8Boundary(string $value): bool
+	{
+		$length = strlen($value);
+		if ($length === 0) {
+			return true;
+		}
+		// walk back over continuation bytes to the lead byte of the last character
+		$i = $length - 1;
+		while ($i >= 0 && (ord($value[$i]) & 0xc0) === 0x80) {
+			$i--;
+		}
+		if ($i < 0) {
+			// nothing but continuation bytes: not valid UTF-8 at all
+			return false;
+		}
+		$lead = ord($value[$i]);
+		$expected = match (true) {
+			$lead < 0x80 => 1,
+			($lead & 0xe0) === 0xc0 => 2,
+			($lead & 0xf0) === 0xe0 => 3,
+			($lead & 0xf8) === 0xf0 => 4,
+			default => 0,
+		};
+
+		return $expected > 0 && $length - $i === $expected;
+	}
 }

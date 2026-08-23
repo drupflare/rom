@@ -127,6 +127,25 @@ class Connection extends SqliteDriverConnection
 	public const MAX_BOUND_PARAMETERS = 100;
 
 	/**
+	 * Bytes ctx.storage.sql will accept in one record.
+	 *
+	 * Measured on the platform, not documented by it. A field larger than this fails the insert
+	 * outright rather than truncating, which is the good failure mode -- but the engine's message
+	 * names neither the column nor the cap, so a module author sees a generic write error from a
+	 * statement that is correct SQL everywhere else.
+	 *
+	 * **DECLARED RATHER THAN ACCOMMODATED, and the arithmetic is why.** Splitting an oversized
+	 * value across a side table the way `file-store.ts` chunks uploads is possible, and it was
+	 * priced before being rejected: at the same 200,000-byte chunk size a 2 MB value becomes **11
+	 * rows instead of 1** on the meter that binds regeneration, every read of that row becomes 11
+	 * reads, and the driver would have to intercept `SELECT *`, aliases, JOINs and aggregates to
+	 * reassemble it -- the same shape problem that keeps wide-integer mode narrow. Nothing in
+	 * Drupal core writes a field this large. So the driver says exactly what happened and where,
+	 * and a module that needs bigger values chunks them itself, where it knows what the value is.
+	 */
+	public const MAX_RECORD_BYTES = 2199995;
+
+	/**
 	 * Characters a table prefix may contain on this driver.
 	 *
 	 * Core validates a prefix against [A-Za-z0-9_.], and the period is there because
@@ -351,16 +370,20 @@ class Connection extends SqliteDriverConnection
 	 *   rewrite itself fails. Refusing is the point: an untranslated pattern
 	 *   silently matches nothing.
 	 */
-	private function translateLikeBinary(string &$sql, array &$params): void
+	private function translateLikeBinary(string &$sql, array &$params): array
 	{
 		if (!str_contains($sql, self::LIKE_BINARY_MARKER)) {
-			return;
+			return [];
 		}
 
+		// filled only where a pattern had to be WIDENED to fit the host's ceiling; see
+		// widenOversizedPattern(). Empty is the normal case and costs nothing
+		$postFilters = [];
+		$widenable = $this->patternWideningAllowed($sql);
 		$marker = preg_quote(self::LIKE_BINARY_MARKER, '/');
 		$rewritten = preg_replace_callback(
 			'/' . $marker . '\s*(:[A-Za-z0-9_]+|\?)/',
-			function (array $m) use (&$params, $sql) {
+			function (array $m) use (&$params, &$postFilters, $widenable, $sql) {
 				$placeholder = $m[1];
 				if ($placeholder === '?') {
 					// Condition::compile() always emits named placeholders, so reaching
@@ -405,13 +428,27 @@ class Connection extends SqliteDriverConnection
 				// safe. Refusing here names the cause; letting it through surfaces the
 				// engine's message from somewhere unrelated.
 				if (strlen($glob) > self::MAX_LIKE_PATTERN_BYTES) {
-					throw new InvalidQueryException(
-						sprintf(
-							'This LIKE BINARY pattern is %d bytes once translated to GLOB, and ctx.storage.sql refuses any LIKE or GLOB pattern over %d bytes ("pattern too complex"). Shorten the search term, or filter in PHP. Note plain LIKE has the same ceiling.',
-							strlen($glob),
-							self::MAX_LIKE_PATTERN_BYTES,
-						),
-					);
+					$widened = $widenable
+						? SqlAnalyzer::widenLikePattern($params[$key], self::MAX_LIKE_PATTERN_BYTES)
+						: null;
+					if ($widened === null) {
+						throw new InvalidQueryException(
+							sprintf(
+								'This LIKE BINARY pattern is %d bytes once translated to GLOB, and ctx.storage.sql refuses any LIKE or GLOB pattern over %d bytes ("pattern too complex"). Shorten the search term, or filter in PHP. Note plain LIKE has the same ceiling.',
+								strlen($glob),
+								self::MAX_LIKE_PATTERN_BYTES,
+							),
+						);
+					}
+					// the widened pattern returns a SUPERSET, so the original is re-applied to the
+					// rows in PHP. Both halves are required and neither is optional: shipping only
+					// the widening would silently return extra rows
+					$postFilters[] = [
+						'column' => self::likeColumnFor($sql, $placeholder),
+						'pattern' => $params[$key],
+					];
+					$params[$key] = SqlAnalyzer::likeToGlob($widened);
+					return $placeholder;
 				}
 				$params[$key] = $glob;
 				return $placeholder;
@@ -430,6 +467,147 @@ class Connection extends SqliteDriverConnection
 			);
 		}
 		$sql = $rewritten;
+
+		// a filter with no column to apply it to would silently drop every row, so it is refused
+		// here rather than applied blindly
+		foreach ($postFilters as $filter) {
+			if ($filter['column'] === null) {
+				throw new InvalidQueryException(
+					sprintf(
+						'A LIKE BINARY pattern is over the %d-byte ceiling and the column it applies to could not be identified, so it cannot be widened and re-filtered: %s',
+						self::MAX_LIKE_PATTERN_BYTES,
+						$sql,
+					),
+				);
+			}
+		}
+
+		return $postFilters;
+	}
+
+	/**
+	 * Whether an oversized pattern in this statement may be widened and re-filtered.
+	 *
+	 * REFUSES FAR MORE THAN IT ACCEPTS, on the same reasoning as `Statement::splitPointFor()`: a
+	 * widened pattern returns a superset, and a superset is only recoverable when the engine has
+	 * not already made a decision from it.
+	 *
+	 *   - not a SELECT: a DELETE or UPDATE would have already written to the extra rows, and no
+	 *     post-filter can un-delete anything. This is the refusal that matters most.
+	 *   - `LIMIT` or `OFFSET`: the engine cuts the superset, then the filter removes rows from what
+	 *     is left, so the caller gets fewer rows than it asked for and cannot tell.
+	 *   - an aggregate or `GROUP BY`: the answer is a fold over the rows, and folding a superset
+	 *     gives a different number that no row filter can correct.
+	 */
+	private static function patternWideningAllowed(string $sql): bool
+	{
+		if (preg_match('/^\s*SELECT\b/i', $sql) !== 1) {
+			return false;
+		}
+
+		return preg_match(
+			'/\b(?:LIMIT|OFFSET|GROUP\s+BY|HAVING|COUNT\s*\(|SUM\s*\(|MIN\s*\(|MAX\s*\(|AVG\s*\()/i',
+			$sql,
+		) !== 1;
+	}
+
+	/**
+	 * The column an oversized LIKE applies to, or NULL when it cannot be read off the statement.
+	 *
+	 * Read from the SQL rather than guessed, and the alias is dropped because the ROW comes back
+	 * keyed by the select-list name. Anything more elaborate than `[table].[column] LIKE :name`
+	 * returns NULL and the caller refuses -- which is the right outcome: a wrong column would drop
+	 * every row and look like an empty result set.
+	 */
+	private static function likeColumnFor(string $sql, string $placeholder): ?string
+	{
+		$quoted = preg_quote($placeholder, '/');
+		$pattern =
+			'/(?:\[?([A-Za-z0-9_]+)\]?\.)?\[?([A-Za-z0-9_]+)\]?\s+LIKE\s+(?:BINARY\s+)?' .
+			preg_quote(self::LIKE_BINARY_MARKER, '/') .
+			'?\s*' .
+			$quoted .
+			'\b/i';
+		if (preg_match($pattern, $sql, $m) !== 1) {
+			return null;
+		}
+
+		return $m[2] === '' ? null : $m[2];
+	}
+
+	/**
+	 * Re-applies an original LIKE pattern to rows fetched with a widened one.
+	 *
+	 * Built as a regex rather than by calling `like` again, because there is no `like` to call:
+	 * the whole point is that the engine could not carry this pattern. `%` and `_` are the only
+	 * two wildcards, `\` escapes them, and everything else is a literal.
+	 *
+	 * @param array $rows
+	 *   Rows as the host returned them.
+	 * @param array $filters
+	 *   Each `['column' => string, 'pattern' => string]`.
+	 *
+	 * @return array
+	 *   The rows that match every filter.
+	 */
+	private static function applyLikeFilters(array $rows, array $filters): array
+	{
+		if ($filters === []) {
+			return $rows;
+		}
+		$regexes = [];
+		foreach ($filters as $filter) {
+			$regexes[] = [
+				'column' => $filter['column'],
+				'regex' => self::likeToRegex($filter['pattern']),
+			];
+		}
+
+		$kept = [];
+		foreach ($rows as $row) {
+			$keep = true;
+			foreach ($regexes as $filter) {
+				$value = is_array($row)
+					? $row[$filter['column']] ?? null
+					: $row->{$filter['column']} ?? null;
+				// a NULL column never matched the pattern in the engine either
+				if (!is_string($value) || preg_match($filter['regex'], $value) !== 1) {
+					$keep = false;
+					break;
+				}
+			}
+			if ($keep) {
+				$kept[] = $row;
+			}
+		}
+
+		return $kept;
+	}
+
+	/**
+	 * One LIKE pattern as a case-SENSITIVE anchored regex.
+	 *
+	 * Case-sensitive because the marker this whole path exists for is LIKE **BINARY**; a
+	 * case-insensitive filter here would keep rows the engine's own GLOB would have dropped.
+	 */
+	private static function likeToRegex(string $pattern): string
+	{
+		$out = '';
+		$length = strlen($pattern);
+		for ($i = 0; $i < $length; $i++) {
+			$ch = $pattern[$i];
+			if ($ch === '\\' && $i + 1 < $length) {
+				$out .= preg_quote($pattern[++$i], '/');
+			} elseif ($ch === '%') {
+				$out .= '.*';
+			} elseif ($ch === '_') {
+				$out .= '.';
+			} else {
+				$out .= preg_quote($ch, '/');
+			}
+		}
+
+		return '/^' . $out . '$/sD';
 	}
 
 	/**
@@ -733,7 +911,11 @@ class Connection extends SqliteDriverConnection
 	{
 		// before classification and before buffering, so every later reader of the
 		// statement sees the translated form
-		$this->translateLikeBinary($sql, $params);
+		$likeFilters = $this->translateLikeBinary($sql, $params);
+		// BEFORE the write reaches the buffer, so a transaction is refused at the statement that
+		// is too large rather than at the commit that replays it -- the engine's own message names
+		// neither the column nor the cap, and by commit time the statement is one of many
+		self::refuseOversizedParameter($sql, $params);
 
 		$kind = SqlAnalyzer::classify($sql);
 
@@ -757,7 +939,10 @@ class Connection extends SqliteDriverConnection
 		}
 
 		if ($this->buffer === null) {
-			return $this->runDirect($sql, $params);
+			// ONE exit for every read path, so a widened pattern cannot reach a caller unfiltered
+			// through a branch somebody forgot. `$likeFilters` is empty on every statement that
+			// did not need widening, and empty on every write by construction
+			return self::filterOutcome($this->runDirect($sql, $params), $likeFilters);
 		}
 
 		if ($kind === SqlAnalyzer::WRITE) {
@@ -783,10 +968,57 @@ class Connection extends SqliteDriverConnection
 		}
 
 		if ($this->buffer->isEmpty() || !$this->buffer->touches(SqlAnalyzer::readTables($sql))) {
-			return $this->runDirect($sql, $params);
+			return self::filterOutcome($this->runDirect($sql, $params), $likeFilters);
 		}
 
-		return $this->runSpeculativeRead($sql, $params);
+		return self::filterOutcome($this->runSpeculativeRead($sql, $params), $likeFilters);
+	}
+
+	/**
+	 * Refuses a parameter larger than the host's record cap, naming what and where.
+	 *
+	 * The DECLARED half of the record-cap limit; see `MAX_RECORD_BYTES` for why the driver does not
+	 * chunk instead. A module that wrote legal SQL gets a message it can act on rather than a
+	 * generic write failure from the engine, and a `hook_requirements()` row can quote it verbatim.
+	 *
+	 * Checked on the PARAMETER rather than on the rendered statement: the statement text has its
+	 * own separate 100,000-character ceiling, and conflating the two would report the wrong limit.
+	 *
+	 * @throws InvalidQueryException
+	 *   Naming the placeholder, its size and the cap.
+	 */
+	private static function refuseOversizedParameter(string $sql, array $params): void
+	{
+		foreach ($params as $name => $value) {
+			if (!is_string($value) || strlen($value) <= self::MAX_RECORD_BYTES) {
+				continue;
+			}
+			throw new InvalidQueryException(
+				sprintf(
+					'Parameter %s is %d bytes and ctx.storage.sql caps one record at %d, so this write is refused rather than truncated. This driver does not split an oversized value across a side table: at a 200,000-byte chunk that is one row per chunk on the daily rows-written meter, and every read of the row becomes as many reads. Chunk the value in the module, where its structure is known. Statement: %s',
+					is_string($name) ? $name : '#' . $name,
+					strlen($value),
+					self::MAX_RECORD_BYTES,
+					substr($sql, 0, 200),
+				),
+			);
+		}
+	}
+
+	/**
+	 * Applies any LIKE post-filters to an outcome's rows.
+	 *
+	 * `rowCount` is left alone: a SELECT writes nothing, so the field carries no meaning that the
+	 * filter could invalidate, and `Statement` resolves its own count from the rows it received.
+	 */
+	private static function filterOutcome(array $outcome, array $filters): array
+	{
+		if ($filters === []) {
+			return $outcome;
+		}
+		$outcome['rows'] = self::applyLikeFilters($outcome['rows'], $filters);
+
+		return $outcome;
 	}
 
 	/**
