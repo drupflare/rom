@@ -60,6 +60,13 @@ final class Statement extends StatementBase implements StatementInterface
 	private ?int $resolvedRowCount = null;
 
 	/**
+	 * Every buffer entry a SPLIT write produced, or NULL when the statement was not split.
+	 *
+	 * @var list<int>|null
+	 */
+	private ?array $bufferIndices = null;
+
+	/**
 	 * Constructs a Statement.
 	 *
 	 * @param CfwSqlClient $client
@@ -93,9 +100,18 @@ final class Statement extends StatementBase implements StatementInterface
 	 * It refuses far more than it accepts, and every refusal is a case where concatenating
 	 * batches would silently return the wrong answer rather than an error:
 	 *
-	 *   - not a SELECT: splitting a write changes what it writes.
+	 *   - not a SELECT, a DELETE or an UPDATE: splitting anything else changes what it writes.
+	 *     **The DELETE and UPDATE cases are a 2026-08-23 NARROWING of a blanket refusal**, and the
+	 *     conservatism that produced the refusal is what makes the narrowing safe to state: set
+	 *     membership does not depend on ordering or on batch boundaries, so N statements over a
+	 *     partition of the `IN` list write exactly what one statement over the whole list would.
+	 *     It cost a real module -- strata's compactor emits one `DELETE ... WHERE hash IN (...)`
+	 *     over the whole removed set, so a sweep of 101 frames threw. Do NOT widen it to "any
+	 *     write": an INSERT has no `IN` list to partition, and a REPLACE could see a row a later
+	 *     batch would have replaced.
 	 *   - `ORDER BY`, `LIMIT` or `OFFSET`: global ordering and cut-off cannot be reconstructed from
-	 *     independently ordered batches, and the result would look plausible.
+	 *     independently ordered batches, and the result would look plausible. Applies to a
+	 *     `DELETE ... LIMIT` for the same reason it applies to a SELECT.
 	 *   - `GROUP BY`, `DISTINCT` or an aggregate: the answer is a fold over the whole set, so a
 	 *     per-batch fold is a different number.
 	 *   - more than one placeholder `IN()` list, or an `IN()` holding anything but placeholders:
@@ -111,7 +127,7 @@ final class Statement extends StatementBase implements StatementInterface
 		if (count($args) <= Connection::MAX_BOUND_PARAMETERS) {
 			return null;
 		}
-		if (preg_match('/^\s*SELECT\b/i', $query) !== 1) {
+		if (preg_match('/^\s*(?:SELECT|DELETE|UPDATE)\b/i', $query) !== 1) {
 			return null;
 		}
 		if (
@@ -183,6 +199,10 @@ final class Statement extends StatementBase implements StatementInterface
 		$rows = [];
 		$rowCount = 0;
 		$bufferIndex = null;
+		// EVERY batch index, not just the last. A split WRITE inside an open transaction produces
+		// one buffered entry per batch, and `rowCount()` resolves an index -- so keeping only the
+		// last would report the last batch's changes as the whole statement's
+		$bufferIndices = [];
 		foreach ($batches as $batch) {
 			$list = implode(', ', array_map(static fn(string $n): string => ':' . $n, $batch));
 			$batchArgs = $fixed;
@@ -197,10 +217,18 @@ final class Statement extends StatementBase implements StatementInterface
 				$rows[] = $row;
 			}
 			$rowCount += (int) ($outcome['rowCount'] ?? 0);
-			$bufferIndex = $outcome['bufferIndex'] ?? $bufferIndex;
+			if (($outcome['bufferIndex'] ?? null) !== null) {
+				$bufferIndices[] = (int) $outcome['bufferIndex'];
+				$bufferIndex = (int) $outcome['bufferIndex'];
+			}
 		}
 
-		return ['rows' => $rows, 'rowCount' => $rowCount, 'bufferIndex' => $bufferIndex];
+		return [
+			'rows' => $rows,
+			'rowCount' => $rowCount,
+			'bufferIndex' => $bufferIndex,
+			'bufferIndices' => $bufferIndices,
+		];
 	}
 
 	/**
@@ -230,6 +258,7 @@ final class Statement extends StatementBase implements StatementInterface
 		}
 
 		$this->bufferIndex = $outcome['bufferIndex'];
+		$this->bufferIndices = $outcome['bufferIndices'] ?? null;
 		$this->resolvedRowCount = null;
 		$this->result = new PrefetchedResult(
 			$this->fetchMode,
@@ -260,6 +289,17 @@ final class Statement extends StatementBase implements StatementInterface
 	{
 		if (!$this->rowCountEnabled) {
 			throw new RowCountException();
+		}
+
+		if ($this->bufferIndices !== null && $this->bufferIndices !== []) {
+			// a split write is N buffered entries and its row count is their sum
+			$this->resolvedRowCount ??= array_sum(
+				array_map(
+					fn(int $index): int => $this->driverConnection->resolveBufferedRowCount($index),
+					$this->bufferIndices,
+				),
+			);
+			return $this->resolvedRowCount;
 		}
 
 		if ($this->bufferIndex !== null) {
