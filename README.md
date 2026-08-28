@@ -475,8 +475,8 @@ proving the untranslated form disagrees, so case-sensitive `STARTS_WITH` / `CONT
 covered by the 50-byte refusal rather than by the differential suite.
 
 The engine floor is established by **feature probe**, not by asking, because
-`sqlite_version()` is refused. It reports **3.46.0**, proven by `unhex()` which landed in
-3.46. That matters more than it looks: Drupal 11.4.5 gates installation on **3.45**, and
+`sqlite_version()` is refused. It reports 3.46.0, proven by `unhex()` which landed in
+3.46. That matters more than it looks: Drupal 11.4.5 gates installation on 3.45, and
 `concat` — the obvious probe — only proves 3.44 and would have **failed** the gate.
 `engineVersionIsFloor()` reports that the number is a floor rather than a reported version,
 so anything displaying it can say so.
@@ -502,7 +502,7 @@ read-your-own-uncommitted-write path. The O(W\*R) term dominates statement count
 are small at 5.4 statements per transaction. Statements-per-transaction is the figure that predicts
 cost, not transaction count.
 
-Rendering is unaffected: a full render measures **34 ms** against **33.8 ms** for the same render
+Rendering is unaffected: a full render measures 34 ms against 33.8 ms for the same render
 on the MEMFS/PDO path. The cache ladder around it is 1 ms / 26 ms / 34 ms / 81 ms.
 
 ### Installers
@@ -581,8 +581,8 @@ composer run lint       # phpcs: docs, naming, API misuse
 composer run analyze    # phpstan level 5, --memory-limit=1G
 bunx prettier --check . # layout, every language including PHP
 
-DRUPAL_ROOT=/path/to/drupal php tests/run-driver-suite.php # 204 assertions
-php tests/run-installer.php                                # 16; installs Drupal for real
+DRUPAL_ROOT=/path/to/drupal php tests/run-driver-suite.php
+php tests/run-installer.php # 16; installs Drupal for real
 ```
 
 ---
