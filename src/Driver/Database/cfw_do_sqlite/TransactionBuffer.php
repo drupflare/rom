@@ -84,7 +84,7 @@ final class TransactionBuffer
 	 * @param int $index
 	 *   The buffer index.
 	 *
-	 * @return array{table: string, cleared: bool, offset: int, columns: string[]}|null
+	 * @return array{table: string, cleared: bool, offset: int, columns: string[], supplied: int|null, suppliedBefore: int}|null
 	 *   The prediction inputs, or NULL when the statement or its table cannot be read.
 	 */
 	public function rowidPrediction(int $index): ?array
@@ -93,6 +93,23 @@ final class TransactionBuffer
 			return null;
 		}
 		return $this->rowidPlan->entry($index);
+	}
+
+	/**
+	 * Says why {@link rowidPrediction} returned NULL, for the connection's refusal tally.
+	 *
+	 * @param int $index
+	 *   The buffer index.
+	 *
+	 * @return string
+	 *   The reason, or an empty string when nothing was refused.
+	 */
+	public function rowidRefusal(int $index): string
+	{
+		if (($this->statements[$index]['failed'] ?? true) === true) {
+			return 'statement-failed';
+		}
+		return $this->rowidPlan->refusalFor($index);
 	}
 
 	/**
@@ -121,21 +138,30 @@ final class TransactionBuffer
 	 *   Its parameters, ready for the host.
 	 * @param string[] $tables
 	 *   The tables it writes, from SqlAnalyzer::writtenTables().
+	 * @param string|null $integerPrimaryKey
+	 *   The written table's INTEGER PRIMARY KEY column, when it has one. Only the connection can
+	 *   read a schema, so it arrives here rather than being looked up.
 	 *
 	 * @return int
 	 *   The index of the buffered statement.
 	 */
-	public function add(string $sql, array $params, array $tables): int
-	{
+	public function add(
+		string $sql,
+		array $params,
+		array $tables,
+		?string $integerPrimaryKey = null,
+	): int {
 		$index = count($this->statements);
 		$this->statements[$index] = [
 			'sql' => $sql,
 			'params' => $params,
 			'tables' => $tables,
 			'failed' => false,
+			// kept so a rebuild after a failed statement re-reads a supplied id the same way
+			'integerPrimaryKey' => $integerPrimaryKey,
 		];
 		$this->markDirty($tables);
-		$this->rowidPlan->record($index, $sql, $tables);
+		$this->rowidPlan->record($index, $sql, $tables, $params, $integerPrimaryKey);
 
 		if (preg_match('/^\s*(?:INSERT|REPLACE)\b/i', $sql) === 1) {
 			$this->lastInsertIndex = $index;
@@ -491,7 +517,13 @@ final class TransactionBuffer
 				continue;
 			}
 			$this->markDirty($statement['tables']);
-			$this->rowidPlan->record($index, $statement['sql'], $statement['tables']);
+			$this->rowidPlan->record(
+				$index,
+				$statement['sql'],
+				$statement['tables'],
+				$statement['params'],
+				$statement['integerPrimaryKey'] ?? null,
+			);
 			if (preg_match('/^\s*(?:INSERT|REPLACE)\b/i', $statement['sql']) === 1) {
 				$this->lastInsertIndex = $index;
 			}
