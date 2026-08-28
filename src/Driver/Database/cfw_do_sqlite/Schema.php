@@ -82,6 +82,64 @@ class Schema extends SqliteDriverSchema
 	/**
 	 * {@inheritdoc}
 	 *
+	 * A cache bin is stored as its primary-key B-tree rather than as a rowid table.
+	 *
+	 * Rows written is the meter that binds regeneration here, and a rowid table gives a TEXT
+	 * PRIMARY KEY its own unique index - so one stored row is charged twice. Every bin
+	 * DatabaseBackend creates keys on a TEXT cid and carries no secondary index on this
+	 * runtime, so that autoindex is the entire index cost. Measured on a steady-state render:
+	 * 8 charged rows to 6.
+	 *
+	 * The 14 bins in the shipped pack are emitted this way by scripts/pack-sql.ts. This covers
+	 * the ones a module adds at runtime, which that packer never sees.
+	 */
+	public function createTableSql($name, $table)
+	{
+		$sql = parent::createTableSql($name, $table);
+
+		if (isset($sql[0]) && $this->storesAsPrimaryKey($name, $table)) {
+			$sql[0] = rtrim($sql[0]) . " WITHOUT ROWID\n";
+		}
+
+		return $sql;
+	}
+
+	/**
+	 * Whether a table should be created WITHOUT ROWID.
+	 *
+	 * Narrow on purpose. Only cache bins are converted: they are the tables measured, they are
+	 * on the fill path, and their rows are keyed by a hash rather than ordered by insertion.
+	 * A serial column is refused outright because sqlite forbids AUTOINCREMENT on a WITHOUT
+	 * ROWID table, and a table with no declared primary key has nothing to be stored by.
+	 *
+	 * @param string $name
+	 *   The unprefixed table name.
+	 * @param array $table
+	 *   The Drupal schema definition.
+	 *
+	 * @return bool
+	 *   TRUE when the table is a cache bin that can be stored by its key.
+	 */
+	private function storesAsPrimaryKey(string $name, array $table): bool
+	{
+		if (!str_starts_with($name, 'cache_')) {
+			return false;
+		}
+		if (empty($table['primary key']) || !is_array($table['primary key'])) {
+			return false;
+		}
+		foreach ($table['fields'] ?? [] as $spec) {
+			if (($spec['type'] ?? '') === 'serial') {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * {@inheritdoc}
+	 *
 	 * Callers pass an unprefixed expression - core's own are 'test%', 'migrate_map_d7_node%'
 	 * and '%' - and expect unprefixed names back, so the prefix is applied on the way in and
 	 * stripped on the way out. The core sqlite version does neither, because there a prefixed
