@@ -67,10 +67,9 @@ class Connection extends SqliteDriverConnection
 	 *
 	 * Kept for the life of the CONNECTION rather than of one buffer, and dropped when any DDL
 	 * runs. A per-buffer cache costs a `sqlite_master` read every time a transaction touches a
-	 * table it cannot predict -- which is every entity save, since those are the AUTOINCREMENT
-	 * tables -- so the refusal would have carried a permanent toll.
+	 * table it cannot predict, so a refusal would carry a permanent toll.
 	 *
-	 * @var array<string, array{appendable: bool, integerPrimaryKey: string|null}>
+	 * @var array<string, array{appendable: bool, autoincrement: bool, integerPrimaryKey: string|null}>
 	 */
 	private array $rowidSchema = [];
 
@@ -83,6 +82,15 @@ class Connection extends SqliteDriverConnection
 	 * @var array<string, int|null>
 	 */
 	private array $rowidMax = [];
+
+	/**
+	 * Committed AUTOINCREMENT base per table, for the life of one buffer.
+	 *
+	 * Frozen for the same reason as {@link $rowidMax}.
+	 *
+	 * @var array<string, int|null>
+	 */
+	private array $rowidSequence = [];
 
 	/**
 	 * The engine version, cached after the first query that needs it.
@@ -847,6 +855,44 @@ class Connection extends SqliteDriverConnection
 	}
 
 	/**
+	 * Returns why {@link predictBufferedInsertId} refused, per reason.
+	 *
+	 * EXISTS BECAUSE THE LAST TWO GUESSES AT THIS WERE BOTH WRONG. A table-level read filter was
+	 * proposed for replays of which zero carried a read, and reading a supplied rowid was proposed
+	 * for the remainder and moved the count by none. A refusal that is COUNTED cannot be guessed
+	 * at a third time.
+	 *
+	 * @return array<string, int>
+	 *   Reason to count, empty when nothing has been refused.
+	 */
+	public function predictionRefusals(): array
+	{
+		return $this->predictionRefusals;
+	}
+
+	/**
+	 * Why each prediction was refused, keyed by reason.
+	 *
+	 * @var array<string, int>
+	 */
+	private array $predictionRefusals = [];
+
+	/**
+	 * Records one refusal and hands NULL back, so the counting cannot drift from the branching.
+	 *
+	 * @param string $reason
+	 *   The branch that refused.
+	 *
+	 * @return null
+	 *   Always, because every caller is a refusal.
+	 */
+	private function refusePrediction(string $reason): mixed
+	{
+		$this->predictionRefusals[$reason] = ($this->predictionRefusals[$reason] ?? 0) + 1;
+		return null;
+	}
+
+	/**
 	 * Returns whether a buffered transaction can be committed atomically.
 	 *
 	 * FALSE means the host has no transaction entry point, so a commit replays
@@ -936,6 +982,9 @@ class Connection extends SqliteDriverConnection
 			preg_match('/^\s*(?:CREATE|DROP|ALTER)\b/i', $sql) === 1
 		) {
 			$this->rowidSchema = [];
+			// a DROP and re-CREATE also drops the sqlite_sequence row, so the base memoised
+			// against the old table would predict an id the new one has already used
+			$this->rowidSequence = [];
 		}
 
 		if ($this->buffer === null) {
@@ -946,13 +995,18 @@ class Connection extends SqliteDriverConnection
 		}
 
 		if ($kind === SqlAnalyzer::WRITE) {
+			$written = SqlAnalyzer::writtenTables($sql);
 			return [
 				'rows' => [],
 				'rowCount' => null,
 				'bufferIndex' => $this->buffer->add(
 					$sql,
 					$params,
-					SqlAnalyzer::writtenTables($sql),
+					$written,
+					// only this class can read a schema, and the plan needs the key to tell an
+					// insert that NAMES its id from one that appends. Memoized per table, so the
+					// cost is the read `predictBufferedInsertId()` was going to make anyway
+					count($written) === 1 ? $this->integerPrimaryKeyFor($written[0]) : null,
 				),
 			];
 		}
@@ -1037,6 +1091,7 @@ class Connection extends SqliteDriverConnection
 		}
 		$this->buffer = new TransactionBuffer();
 		$this->rowidMax = [];
+		$this->rowidSequence = [];
 	}
 
 	/**
@@ -1046,6 +1101,7 @@ class Connection extends SqliteDriverConnection
 	{
 		$this->buffer = null;
 		$this->rowidMax = [];
+		$this->rowidSequence = [];
 	}
 
 	/**
@@ -1081,6 +1137,7 @@ class Connection extends SqliteDriverConnection
 			$out['buffered'] = $this->buffer->count();
 			$this->buffer = null;
 			$this->rowidMax = [];
+			$this->rowidSequence = [];
 		}
 
 		if (!isset($this->transactionManager)) {
@@ -1128,6 +1185,7 @@ class Connection extends SqliteDriverConnection
 		$buffer = $this->buffer;
 		$this->buffer = null;
 		$this->rowidMax = [];
+		$this->rowidSequence = [];
 
 		if ($buffer === null || $buffer->isEmpty()) {
 			return;
@@ -1364,6 +1422,18 @@ class Connection extends SqliteDriverConnection
 	 * effect on the rowid is not an append; this holds the first half and refuses the two schema
 	 * shapes that break the arithmetic.
 	 *
+	 * AUTOINCREMENT is predictable too, and refusing it was the expensive half. Its next rowid is
+	 * `max(sqlite_sequence.seq, max(rowid)) + 1`, and `sqlite_sequence` is an ordinary readable
+	 * table -- so the arithmetic is the same one with a different base. Measured before the change:
+	 * four content writes produced 24 speculative replays and 128 replayed statements, and NOT ONE
+	 * of them carried a read. Every one was this function returning NULL for an AUTOINCREMENT
+	 * table, which is 17 of the shipped schema's tables including `node`, `node_revision`,
+	 * `path_alias`, `file_managed` and `users`.
+	 *
+	 * A CLEARED autoincrement table still refuses: a `DELETE FROM t` leaves `sqlite_sequence`
+	 * alone and `DELETE FROM sqlite_sequence` does not, so the base after a clear depends on a
+	 * statement the buffer does not track.
+	 *
 	 * @param TransactionBuffer $buffer
 	 *   The open buffer.
 	 * @param int $index
@@ -1376,26 +1446,112 @@ class Connection extends SqliteDriverConnection
 	{
 		$entry = $buffer->rowidPrediction($index);
 		if ($entry === null) {
-			return null;
+			return $this->refusePrediction($buffer->rowidRefusal($index) ?: 'no-plan-entry');
 		}
 
 		$schema = $this->rowidSchemaFor($entry['table']);
 		if (!$schema['appendable']) {
-			return null;
+			return $this->refusePrediction('not-appendable');
+		}
+
+		// AN INSERT THAT NAMES ITS OWN ID NEEDS NO ARITHMETIC AND NO REPLAY. `last_insert_rowid()`
+		// is the rowid actually written, so a supplied value is the answer whether or not it is the
+		// table's maximum. The plan read it out of this statement's own parameters at buffer time;
+		// before that it was replayed for, which is what the remaining 18 replays were
+		if ($entry['supplied'] !== null) {
+			return (string) $entry['supplied'];
 		}
 		if (RowidPlan::suppliesRowid($entry['columns'], $schema['integerPrimaryKey'])) {
-			return null;
+			return $this->refusePrediction('supplied-rowid-unreadable');
+		}
+
+		if ($schema['autoincrement']) {
+			if ($entry['cleared']) {
+				return $this->refusePrediction('autoincrement-cleared');
+			}
+			$seq = $this->committedSequence($entry['table']);
+			if ($seq === null) {
+				return $this->refusePrediction('sequence-unreadable');
+			}
+			return (string) ($seq + $entry['offset']);
 		}
 
 		$base = 0;
 		if (!$entry['cleared']) {
 			$base = $this->committedMaxRowid($entry['table']);
 			if ($base === null) {
-				return null;
+				return $this->refusePrediction('max-rowid-unreadable');
 			}
 		}
 
-		return (string) ($base + $entry['offset']);
+		// a supplied id EARLIER in the buffer can have moved the maximum past the committed one,
+		// and counting it as an append would predict an id that already exists
+		return (string) (max($base, $entry['suppliedBefore']) + $entry['offset']);
+	}
+
+	/**
+	 * Reads one AUTOINCREMENT table's committed sequence base, once per buffer.
+	 *
+	 * The base is `max(sqlite_sequence.seq, max(rowid))` rather than either alone. `seq` is
+	 * normally the larger and is the value AUTOINCREMENT exists to hold across deletes, but a table
+	 * whose rows were inserted before the sequence row existed reads 0 from it -- so taking `seq`
+	 * on its own would predict an id that already exists.
+	 *
+	 * Goes straight to the host for the same reason {@link committedMaxRowid} does: routing it
+	 * through the buffer would see the table is dirty and open the replay this exists to avoid.
+	 *
+	 * @param string $table
+	 *   The lower-cased table name.
+	 *
+	 * @return int|null
+	 *   The base, or NULL when either half is not a number this can reason about.
+	 */
+	private function committedSequence(string $table): ?int
+	{
+		if (array_key_exists($table, $this->rowidSequence)) {
+			return $this->rowidSequence[$table];
+		}
+
+		$seq = null;
+		try {
+			$result = $this->client()->exec('SELECT seq FROM sqlite_sequence WHERE name = ?', [
+				$table,
+			]);
+			$value = $result['rows'][0]['seq'] ?? null;
+			// no row yet means nothing has ever been inserted through the sequence, which is 0
+			$seq = $value === null ? 0 : (is_numeric($value) ? (int) $value : null);
+		} catch (Exception) {
+			// no sqlite_sequence table at all is legitimate on a database with no AUTOINCREMENT
+			$seq = null;
+		}
+
+		if ($seq !== null) {
+			$max = $this->committedMaxRowid($table);
+			$seq = $max === null ? null : max($seq, $max);
+		}
+
+		$this->rowidSequence[$table] = $seq;
+		return $seq;
+	}
+
+	/**
+	 * One table's INTEGER PRIMARY KEY column, for the plan's use at buffer time.
+	 *
+	 * Separate from {@link rowidSchemaFor} only so the buffer does not carry a schema array it has
+	 * no use for; it is the same memoized read.
+	 *
+	 * @param string $table
+	 *   The table name as SqlAnalyzer reported it.
+	 *
+	 * @return string|null
+	 *   The column, or NULL when the table has none or cannot be read.
+	 */
+	private function integerPrimaryKeyFor(string $table): ?string
+	{
+		if ($table === SqlAnalyzer::ALL_TABLES || $table === SqlAnalyzer::SCHEMA_TABLE) {
+			return null;
+		}
+		return $this->rowidSchemaFor(strtolower($table))['integerPrimaryKey'];
 	}
 
 	/**
@@ -1404,7 +1560,7 @@ class Connection extends SqliteDriverConnection
 	 * @param string $table
 	 *   The lower-cased table name.
 	 *
-	 * @return array{appendable: bool, integerPrimaryKey: string|null}
+	 * @return array{appendable: bool, autoincrement: bool, integerPrimaryKey: string|null}
 	 *   A table whose schema cannot be read reports appendable FALSE, which is the replay path.
 	 */
 	private function rowidSchemaFor(string $table): array
@@ -1413,7 +1569,7 @@ class Connection extends SqliteDriverConnection
 			return $this->rowidSchema[$table];
 		}
 
-		$facts = ['appendable' => false, 'integerPrimaryKey' => null];
+		$facts = ['appendable' => false, 'autoincrement' => false, 'integerPrimaryKey' => null];
 		try {
 			$schema = $this->client()->exec(
 				'SELECT sql FROM sqlite_master WHERE type = ? AND name = ?',
@@ -1423,11 +1579,12 @@ class Connection extends SqliteDriverConnection
 			if ($ddl !== '' && self::isAppendableDdl($ddl)) {
 				$facts = [
 					'appendable' => true,
+					'autoincrement' => preg_match('/\bAUTOINCREMENT\b/i', $ddl) === 1,
 					'integerPrimaryKey' => self::integerPrimaryKeyColumn($ddl),
 				];
 			}
 		} catch (Exception) {
-			$facts = ['appendable' => false, 'integerPrimaryKey' => null];
+			$facts = ['appendable' => false, 'autoincrement' => false, 'integerPrimaryKey' => null];
 		}
 
 		$this->rowidSchema[$table] = $facts;
@@ -1486,10 +1643,9 @@ class Connection extends SqliteDriverConnection
 	 */
 	private static function isAppendableDdl(string $ddl): bool
 	{
-		if (preg_match('/\bWITHOUT\s+ROWID\b/i', $ddl) === 1) {
-			return false;
-		}
-		return preg_match('/\bAUTOINCREMENT\b/i', $ddl) !== 1;
+		// AUTOINCREMENT used to be refused here. It is appendable -- its base is `sqlite_sequence`
+		// rather than `max(rowid)`, which is a different base and not a different rule
+		return preg_match('/\bWITHOUT\s+ROWID\b/i', $ddl) !== 1;
 	}
 
 	/**

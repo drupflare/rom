@@ -426,14 +426,20 @@ echo "\nDegraded host (no cfwSqlTxn)\n";
 [$host, $connection] = connect(false);
 ok('atomic commit is reported unavailable', $connection->supportsAtomicCommit() === false);
 $connection->query('CREATE TABLE {t} (id INTEGER PRIMARY KEY, v TEXT)');
+$connection->query('CREATE TABLE {u} (id INTEGER PRIMARY KEY, v TEXT)');
 $connection->query('CREATE TABLE {other} (id INTEGER PRIMARY KEY, v TEXT)');
 $connection
 	->insert('other')
 	->fields(['id' => 1, 'v' => 'committed'])
 	->execute();
 $transaction = $connection->startTransaction();
-// a raw INSERT never asks for the new rowid, so it can still be buffered
-$connection->query('INSERT INTO {t} (id, v) VALUES (1, :v)', [':v' => 'x']);
+// AN UNPREDICTABLE INSERT, chosen deliberately. This block used to insert
+// `(id, v) VALUES (1, ...)`, which supplies its own rowid, and a plain append is predicted by
+// arithmetic -- so neither shape provokes the refusal it is here to assert. A conditional UPDATE
+// after the insert blocks the table, which leaves a replay as the only way to learn the id, and a
+// replay is exactly what a host with no `cfwSqlTxn` cannot do
+$connection->query('INSERT INTO {t} (v) VALUES (:v)', [':v' => 'x']);
+$connection->query('UPDATE {t} SET v = :v WHERE v = :old', [':v' => 'x2', ':old' => 'x']);
 $clean = $connection->query('SELECT v FROM {other} WHERE id = 1')->fetchField();
 ok('a clean read still works', $clean === 'committed');
 $refused = false;
@@ -456,19 +462,32 @@ $builderRefused = false;
 try {
 	$connection
 		->insert('t')
-		->fields(['id' => 2, 'v' => 'y'])
+		->fields(['v' => 'y'])
 		->execute();
 } catch (UncommittedStateException $e) {
 	$builderRefused = true;
 }
 ok('the insert query builder cannot run in a transaction on a degraded host', $builderRefused);
+// and what the refusal above is really about is the REPLAY, not the host: an insert naming its own
+// id is answerable with no transaction entry point at all. On `u` rather than `t`, because the
+// conditional UPDATE above blocks `t` for everything after it
+$suppliedOnDegraded = $connection
+	->insert('u')
+	->fields(['id' => 9, 'v' => 'supplied'])
+	->execute();
+ok(
+	'but a supplied rowid is answered even on a degraded host, because nothing has to be replayed',
+	(string) $suppliedOnDegraded === '9',
+	(string) $suppliedOnDegraded,
+);
 $transaction->commitOrRelease();
 unset($transaction);
-// two rows: the refused builder insert was already buffered before the id was
-// asked for, and committing keeps it
+// two rows: the append, and the refused builder insert -- already buffered before its id was asked
+// for, so committing keeps it
 ok(
 	'the degraded commit still replays',
 	(int) $host->pdo->query('SELECT COUNT(*) FROM t')->fetchColumn() === 2,
+	(string) $host->pdo->query('SELECT COUNT(*) FROM t')->fetchColumn(),
 );
 
 // --- errors ----------------------------------------------------------------
@@ -1147,25 +1166,21 @@ ok(
 		$host->replayedStatements - $before['hostReplayed'],
 	),
 );
-// MEASURED, not predicted, and the first draft of these assertions guessed 1 and was wrong.
-// One write plus one dirty read costs TWO speculative transactions, because Insert::execute()
-// asks for lastInsertId() and a buffered insert has no rowid yet -- so the id is resolved by its
-// own replay, before any read happens. That is the finding these counters were added to expose.
+// MEASURED, not predicted, and these numbers have now moved TWICE. They first read 3/2/2: one
+// speculative replay to resolve the buffered insert's id and one for the read. The id replay is
+// gone -- `predictBufferedInsertId()` now derives an AUTOINCREMENT id from `sqlite_sequence`
+// instead of refusing -- so the read is the only speculative transaction left.
 ok(
-	'a write, a dirty read and a commit is 3 host transactions',
-	$afterOne['transactions'] === 3,
+	'a write, a dirty read and a commit is 2 host transactions',
+	$afterOne['transactions'] === 2,
 	(string) $afterOne['transactions'],
 );
 ok(
-	'two of them are speculative: one for the buffered insert id, one for the read',
-	$afterOne['speculative'] === 2,
+	'one of them is speculative: the read, since the insert id needs no replay now',
+	$afterOne['speculative'] === 1,
 	(string) $afterOne['speculative'],
 );
-ok(
-	'they replay 2 statements between them',
-	$afterOne['replayed'] === 2,
-	(string) $afterOne['replayed'],
-);
+ok('it replays 1 statement', $afterOne['replayed'] === 1, (string) $afterOne['replayed']);
 ok(
 	'speculativeCount() never exceeds transactionCount()',
 	$afterOne['speculative'] <= $afterOne['transactions'],
@@ -1178,9 +1193,13 @@ ok(
 // TransactionBuffer::statements() IN FULL for every dirty read, so N writes each followed by a
 // read replay 1 + 2 + ... + N = N(N+1)/2 statements. At N=3 that is 6, from 3 writes.
 //
-// statementCount() rises by 4 over the same block -- three replays plus the commit, one bridge
-// crossing each -- so the quadratic term is invisible to it. That gap IS the finding, and it is
-// why these are separate numbers rather than one.
+// IT USED TO BE N(N+1), twice that, because each pair ALSO paid an id-resolution replay of the
+// same buffer. Predicting an AUTOINCREMENT id removed the doubling; the triangular term is
+// inherent to answering a read against a buffer and is still here.
+//
+// statementCount() cannot see the triangular term at all -- it counts bridge crossings, one per
+// replay -- so the gap between the two numbers IS the finding, and it is why these are separate
+// counters rather than one.
 $midpoint = [
 	'replayed' => $connection->replayedStatementCount(),
 	'statements' => $connection->statementCount(),
@@ -1188,8 +1207,11 @@ $midpoint = [
 	'hostReplayed' => $host->replayedStatements,
 ];
 
+// N=4 rather than 3. At N=3 the triangular total is 6 and the crossing count is also 6, so the
+// control below -- that the two counters are not derivable from each other -- read as a failure
+// on a coincidence. The shapes differ; the sample size was hiding it
 $transaction = $connection->startTransaction();
-for ($i = 1; $i <= 3; $i++) {
+for ($i = 1; $i <= 4; $i++) {
 	$connection
 		->insert('cost')
 		->fields(['v' => "wr-$i"])
@@ -1204,13 +1226,13 @@ $grewStatements = $connection->statementCount() - $midpoint['statements'];
 $grewSpeculative = $connection->speculativeCount() - $midpoint['speculative'];
 
 ok(
-	'three write-then-read pairs make SIX speculative replays, two per pair',
-	$grewSpeculative === 6,
+	'four write-then-read pairs make FOUR speculative replays, one per pair',
+	$grewSpeculative === 4,
 	(string) $grewSpeculative,
 );
 ok(
-	'they re-send 12 statements, which is N(N+1) rather than N(N+1)/2',
-	$grewReplayed === 12,
+	'they re-send 10 statements, which is N(N+1)/2 and no longer N(N+1)',
+	$grewReplayed === 10,
 	(string) $grewReplayed,
 );
 ok(
@@ -1236,9 +1258,9 @@ ok(
 );
 // #endregion
 // a read of an untouched table must NOT open a speculative transaction, or every read inside a
-// transaction would pay for a replay and the counter would be measuring the wrong thing
-// isolated by DIFFERENCE, because an insert costs a speculative replay on its own: comparing
-// [insert] against [insert + read] is the only way to attribute the cost to the read
+// transaction would pay for a replay and the counter would be measuring the wrong thing.
+// Still isolated by DIFFERENCE even though a bare insert now costs zero: the difference is what
+// attributes a cost to the READ, and it stays correct whatever the insert costs
 $insertOnlyBefore = $connection->speculativeCount();
 $transaction = $connection->startTransaction();
 $connection
@@ -1261,8 +1283,8 @@ unset($transaction);
 $withCleanRead = $connection->speculativeCount() - $withCleanReadBefore;
 
 ok(
-	'a buffered insert costs one speculative replay by itself, for its id',
-	$insertOnly === 1,
+	'a buffered insert into an AUTOINCREMENT table now costs NO speculative replay',
+	$insertOnly === 0,
 	(string) $insertOnly,
 );
 ok(
@@ -1349,15 +1371,21 @@ ok(
 	var_export($repeatId, true),
 );
 
-// CONTROL: the FIRST resolution of a newly buffered insert still costs one, so the three
-// assertions above are about the cache and not about lastInsertId() being free
+// CONTROL: a resolution the PREDICTOR refuses still costs one, so the three assertions above are
+// about the cache rather than about lastInsertId() having become free everywhere.
+//
+// The shape has to be one prediction cannot answer, and an unconditional DELETE is exactly that
+// for an AUTOINCREMENT table: it empties the rows and leaves `sqlite_sequence` alone, so the next
+// id depends on whether that row was cleared too -- which the buffer does not track. A plain
+// insert here would now be predicted and the control would pass on a vacuous zero.
+$cacheConnection->query('DELETE FROM {cache}');
 $freshBefore = $cacheConnection->speculativeCount();
 $cacheConnection
 	->insert('cache')
 	->fields(['v' => 'second'])
 	->execute();
 ok(
-	'CONTROL: a NEWLY buffered insert still costs one speculative replay',
+	'CONTROL: an insert the predictor refuses still costs one speculative replay',
 	$cacheConnection->speculativeCount() === $freshBefore + 1,
 	sprintf('%d before, %d after', $freshBefore, $cacheConnection->speculativeCount()),
 );
@@ -1627,19 +1655,52 @@ ok(
 	sprintf('predicted %s, engine %s', $predictedId, $engineId),
 );
 
-// #region the controls, each of which must still pay for a replay
+// An AUTOINCREMENT table is predicted too, from `sqlite_sequence` rather than `max(rowid)`, and
+// this used to be a control asserting the opposite. Its agreement with the engine is checked the
+// same way the rowid case is -- a prediction the engine disagrees with is silently wrong
+// everywhere, and that is a worse failure than the replay it removes.
 $serialBefore = $rowidConnection->speculativeCount();
 $serialTransaction = $rowidConnection->startTransaction();
 $rowidConnection
 	->insert('rtserial')
-	->fields(['v' => 'serial'])
+	->fields(['v' => 'serial.1'])
 	->execute();
+$serialPredicted = $rowidConnection->lastInsertId();
+$rowidConnection
+	->query('SELECT v FROM {rtserial} WHERE v = :v', [':v' => 'serial.1'])
+	->fetchField();
+$serialEngine = $rowidConnection->lastInsertId();
 $serialTransaction->commitOrRelease();
 unset($serialTransaction);
 ok(
-	'CONTROL: an AUTOINCREMENT table still replays, because sqlite_sequence owns its next id',
-	$rowidConnection->speculativeCount() - $serialBefore === 1,
-	(string) ($rowidConnection->speculativeCount() - $serialBefore),
+	'an AUTOINCREMENT insert needs no replay of its own for its id',
+	$serialBefore === $rowidConnection->speculativeCount() - 1,
+	sprintf(
+		'%d replays, of which the dirty read is 1',
+		$rowidConnection->speculativeCount() - $serialBefore,
+	),
+);
+ok(
+	'and the predicted AUTOINCREMENT id is the one the engine assigns',
+	$serialPredicted === $serialEngine && $serialPredicted === '1',
+	sprintf('predicted %s, engine %s', $serialPredicted, $serialEngine),
+);
+// CONTROL: the sequence base is not just max(rowid). A delete leaves sqlite_sequence alone, so
+// the next id after removing the only row is 2 rather than 1 -- taking max(rowid) would collide
+$rowidConnection->query('DELETE FROM {rtserial}');
+$gapTransaction = $rowidConnection->startTransaction();
+$rowidConnection
+	->insert('rtserial')
+	->fields(['v' => 'serial.2'])
+	->execute();
+$gapPredicted = $rowidConnection->lastInsertId();
+$gapTransaction->commitOrRelease();
+unset($gapTransaction);
+ok(
+	'CONTROL: the base is sqlite_sequence, so an id is not reused after a delete',
+	$gapPredicted === '2' &&
+		(string) $rowidConnection->query('SELECT id FROM {rtserial}')->fetchField() === '2',
+	sprintf('predicted %s', $gapPredicted),
 );
 
 $chosenBefore = $rowidConnection->speculativeCount();
@@ -1651,9 +1712,45 @@ $rowidConnection
 $chosenTransaction->commitOrRelease();
 unset($chosenTransaction);
 ok(
-	'CONTROL: an insert that supplies the rowid itself is not an append, so it replays',
-	$rowidConnection->speculativeCount() - $chosenBefore === 1,
+	'an insert that supplies the rowid itself needs no replay: the id is in its own parameters',
+	$rowidConnection->speculativeCount() - $chosenBefore === 0,
 	(string) ($rowidConnection->speculativeCount() - $chosenBefore),
+);
+ok(
+	'and the id it reports is the one that was supplied',
+	(string) $rowidConnection->query('SELECT id FROM {rtchosen}')->fetchField() === '77',
+);
+
+// THE COLLISION THIS FIX ALSO CLOSES. A supplied rowid is not an append, so counting it as one
+// predicted an id that already exists: insert 400 into a table whose maximum is 1, then append,
+// and the append is 401 rather than the 2 an offset counter would say.
+$rowidConnection->query('CREATE TABLE {rtmixed} (id INTEGER PRIMARY KEY, v TEXT)');
+$rowidConnection
+	->insert('rtmixed')
+	->fields(['id' => 1, 'v' => 'seed'])
+	->execute();
+$mixedTransaction = $rowidConnection->startTransaction();
+$rowidConnection
+	->insert('rtmixed')
+	->fields(['id' => 400, 'v' => 'chosen'])
+	->execute();
+$rowidConnection
+	->insert('rtmixed')
+	->fields(['v' => 'appended'])
+	->execute();
+$mixedPredicted = $rowidConnection->lastInsertId();
+$mixedTransaction->commitOrRelease();
+unset($mixedTransaction);
+ok(
+	'an append AFTER a supplied rowid is predicted past it, not past the committed maximum',
+	$mixedPredicted === '401',
+	sprintf('predicted %s', $mixedPredicted),
+);
+ok(
+	'and the engine agrees',
+	(string) $rowidConnection
+		->query("SELECT id FROM {rtmixed} WHERE v = 'appended'")
+		->fetchField() === '401',
 );
 
 // A CONDITIONAL delete leaves an unknown maximum behind, unlike the delete-all above, so the
