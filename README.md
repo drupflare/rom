@@ -23,7 +23,7 @@ The package is `drupflare/rom`; the driver directory and module machine name are
 > **This is not a general-purpose SQLite driver.** It targets one engine reached through one
 > bridge: `ctx.storage.sql`, called through host functions the Worker installs. There is no PDO,
 > no file path, no connection string and no second database to attach. On a normal host it cannot
-> connect — `Install\Tasks` reports the driver uninstallable when the bridge is absent. For SQLite
+> connect; `Install\Tasks` reports the driver uninstallable when the bridge is absent. For SQLite
 > on a filesystem, use Drupal core's `sqlite` driver, which this one extends.
 > [Platform Limits](#-platform-limits) are properties of the engine, not tunables.
 
@@ -36,6 +36,7 @@ The package is `drupflare/rom`; the driver directory and module machine name are
 - [Host Contract](#-host-contract)
 - [Installation](#-installation)
 - [Table Prefixes](#-table-prefixes)
+- [Partitioned Rowids](#-partitioned-rowids)
 - [Platform Limits](#-platform-limits)
 - [Design Limits](#-design-limits)
 - [SQL Function and Collation Audit](#-sql-function-and-collation-audit)
@@ -123,8 +124,8 @@ buffer until a later replay trips over it. Left there it is fatal twice over: ev
 replay re-runs it, and so does the commit, so the transaction can never succeed even after the
 reason for the refusal is gone.
 
-It's the exact shape of Drupal core's own lazy-table idiom — write, catch the failure, create the table,
-carry on; which `Core\Routing\MatcherDumper::dump()` runs **inside a transaction**. A stock `standard`
+It's the exact shape of Drupal core's own lazy-table idiom (write, catch the failure, create the
+table, carry on), which `Core\Routing\MatcherDumper::dump()` runs **inside a transaction**. A stock `standard`
 install died there: `DELETE FROM router` was buffered instead of failing, so `ensureTableExists()` never
 fired, the `router` table was never created, and the buffered delete then poisoned every replay and the commit.
 
@@ -139,8 +140,8 @@ search.
 - A prefix an earlier replay already resolved is skipped. The committed state cannot change
   while the buffer is open, so a replay of the same prefix is deterministic and a prefix
   that has succeeded once cannot be the culprit.
-- Every probe is a speculative replay and is **counted as one** — the counters do not get to
-  hide the repair. Measured: four buffered writes with one bad third costs four host
+- Every probe is a speculative replay and is **counted as one**, so the counters do not hide
+  the repair. Measured: four buffered writes with one bad third costs four host
   transactions to place it, and the suite asserts that number.
 - When the trailing read is what SQLite refused, the buffer replays cleanly and **nothing is
   discarded**. That control is asserted too; without it the repair would also pass on a
@@ -149,13 +150,13 @@ search.
 The slot is marked rather than removed, so a buffer index already handed to a `Statement`
 still names the same statement, and a replay maps its results back by position. Attribution is
 the limit: the failure is delivered to whichever caller triggered the replay, which is the failing
-statement only when its own id or row count was requested. Anything other than a missing table — a
-constraint violation, for instance — surfaces at the replay or the commit rather than at
+statement only when its own id or row count was requested. Anything other than a missing table (a
+constraint violation, for instance) surfaces at the replay or the commit rather than at
 `execute()`. Both are consequences of deferring writes.
 
 A suspension point cannot land inside a replay: the whole save is one synchronous `php._run()`,
 and the host brackets its bridge calls with `zend_wasm_slice_mask(1)`/`(0)` from `phasm`'s VM
-interrupt patch. This is a standing constraint on any future JSPI build — one that can suspend
+interrupt patch. This is a standing constraint on any future JSPI build: one that can suspend
 mid-`transactionSync()` would break the atomicity this driver depends on.
 
 The constructor calls the **grandparent** `Drupal\Core\Database\Connection::__construct()`
@@ -251,7 +252,7 @@ composer require drupflare/rom
 ```
 
 `composer/installers` places the module at `web/modules/contrib/cfw_do_sqlite`, not
-`.../rom`, because `composer.json` sets `extra.installer-name` — the package is named
+`.../rom`, because `composer.json` sets `extra.installer-name`. The package is named
 for the repository and the directory is named for the module machine name, which is what
 Drupal discovers it by.
 
@@ -279,7 +280,8 @@ in scope.
 
 There are no credentials and no host. The Durable Object's identity **is** the address, so
 `database` is a label recorded for reference and routes nothing. `prefix` is honoured, with
-one character's worth of exception; see the next section.
+one character's worth of exception; see the next section. `lane` and `lanes` are optional and
+default to 0; see [Partitioned Rowids](#-partitioned-rowids).
 
 ---
 
@@ -324,6 +326,32 @@ where the period is a schema selector: a database in MySQL, a schema in PostgreS
 file in core sqlite. None of those exist here.
 `Install\Tasks::validateDatabaseSettings()` rejects it at the install form as well, so the
 installer reports the problem instead of fataling.
+
+---
+
+## 🧮 Partitioned Rowids
+
+`'lane' => 2, 'lanes' => 3` makes this connection mint only rowids congruent to 2 modulo 4.
+Both default to 0, which mints every id and is the arithmetic every other section describes.
+
+It is for a host that runs several Durable Objects behind one site where only one of them
+commits. A secondary runs the write, reads through its own buffer, rolls back, and hands the
+statement list to the primary to replay. `lastInsertId()` has already gone into a redirect by
+then, and the primary's SQLite assigns by its own maximum, so the two disagree and nothing
+errors.
+
+A non-zero `lane` changes two things:
+
+- `lastInsertId()` for a buffered insert answers with the next id in this connection's residue
+  class rather than the next id, so no two connections in the pool can name the same one.
+- A plain `INSERT INTO t (cols) VALUES (...)` is rewritten to name the table's integer primary
+  key and carry that value, so the id the caller was told is the id that gets committed.
+
+The value is spliced in as a decimal literal, so the ordinals of the existing placeholders do
+not move. Statements the driver does not parse as a plain single-row insert are left alone. The
+sequence gains gaps, which Drupal tolerates because an entity id is opaque.
+
+This is `auto_increment_offset` and `auto_increment_increment` from multi-primary MySQL.
 
 ---
 
