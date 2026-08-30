@@ -113,6 +113,20 @@ final class TransactionBuffer
 	}
 
 	/**
+	 * Returns the highest rowid a buffered insert has named for one table.
+	 *
+	 * @param string $table
+	 *   The table SqlAnalyzer named, lower-cased.
+	 *
+	 * @return int
+	 *   The value, or 0 when nothing buffered has named its own id in that table.
+	 */
+	public function suppliedMax(string $table): int
+	{
+		return $this->rowidPlan->suppliedMaxFor($table);
+	}
+
+	/**
 	 * Returns whether a buffered statement appends exactly one row.
 	 *
 	 * @param int $index

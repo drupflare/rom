@@ -1830,6 +1830,254 @@ ok(
 );
 // #endregion
 // #endregion
+// #region a lane mints from its own slice of the rowid space
+//
+// A read-replica lane runs a write, rolls its own copy back and forwards the statements to a
+// primary that replays them. A prediction alone is then only the id the caller was TOLD: the
+// primary's SQLite appends by its own maximum, so the redirect and the row disagree and nothing
+// errors. Two halves close that and neither works alone -- the prediction strides, and the buffered
+// statement carries the value it minted. The unpartitioned control at the end is what proves the
+// primary is untouched.
+echo "\nPartitioned rowids\n";
+
+/**
+ * Builds a Connection that mints as one lane of a pool.
+ *
+ * @param int $lane
+ *   The lane number; 0 is the primary and partitions nothing.
+ * @param int $lanes
+ *   How many lanes the pool has beyond the primary.
+ *
+ * @return array
+ *   The fake host and the Connection bound to it, in that order.
+ */
+function lane_connect(int $lane, int $lanes): array
+{
+	$host = new FakeHost();
+	$client = new CfwSqlClient($host->execBridge(), $host->txnBridge());
+	$connection = new Connection($client, [
+		'prefix' => '',
+		'database' => 'do',
+		'lane' => $lane,
+		'lanes' => $lanes,
+	]);
+	$connection->query('CREATE TABLE {ln} (id INTEGER PRIMARY KEY, v TEXT)');
+	$connection->query('CREATE TABLE {lnserial} (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)');
+	// five committed rows, so a plain append would be 6 and a strided one cannot be
+	for ($i = 1; $i <= 5; $i++) {
+		$connection
+			->insert('ln')
+			->fields(['id' => $i, 'v' => "seed.$i"])
+			->execute();
+		$connection
+			->insert('lnserial')
+			->fields(['v' => "seed.$i"])
+			->execute();
+	}
+
+	return [$host, $connection];
+}
+
+/**
+ * Buffers inserts into one table, commits them, and reports what each half did.
+ *
+ * @param FakeHost $host
+ *   The host, read for the statements it was actually sent.
+ * @param Connection $connection
+ *   The connection to drive.
+ * @param string $table
+ *   The table to insert into.
+ * @param int $rows
+ *   How many rows to buffer inside the one transaction.
+ *
+ * @return array{predicted: string[], committed: int[], sql: string[]}
+ *   The ids reported, the ids the engine gave, and the INSERT statements as sent.
+ */
+function lane_insert(FakeHost $host, Connection $connection, string $table, int $rows = 1): array
+{
+	$mark = count($host->statements);
+	$predicted = [];
+	$transaction = $connection->startTransaction();
+	for ($i = 0; $i < $rows; $i++) {
+		$predicted[] = (string) $connection
+			->insert($table)
+			->fields(['v' => "lane.$i"])
+			->execute();
+	}
+	$transaction->commitOrRelease();
+	unset($transaction);
+
+	$sql = [];
+	foreach (array_slice($host->statements, $mark) as $statement) {
+		if (preg_match('/^\s*INSERT\s+INTO/i', $statement) === 1) {
+			$sql[] = $statement;
+		}
+	}
+	$committed = [];
+	$landed = $connection->query("SELECT id FROM {{$table}} WHERE v LIKE 'lane.%' ORDER BY id");
+	foreach ($landed as $row) {
+		$committed[] = (int) $row->id;
+	}
+
+	return ['predicted' => $predicted, 'committed' => $committed, 'sql' => $sql];
+}
+
+[, $primaryConnection] = lane_connect(0, 3);
+ok(
+	'lane 0 is the primary and strides on nothing',
+	$primaryConnection->idPartition() === ['offset' => 0, 'stride' => 1],
+	json_encode($primaryConnection->idPartition()),
+);
+[, $unpooledConnection] = lane_connect(1, 0);
+ok(
+	'and a lane with no pool behind it strides on nothing either',
+	$unpooledConnection->idPartition() === ['offset' => 0, 'stride' => 1],
+	json_encode($unpooledConnection->idPartition()),
+);
+[$laneHost, $laneConnection] = lane_connect(1, 3);
+ok(
+	'lane 1 of 3 takes every fourth id, offset 1',
+	$laneConnection->idPartition() === ['offset' => 1, 'stride' => 4],
+	json_encode($laneConnection->idPartition()),
+);
+
+// THE DIVERGENCE ITSELF. Base 5, so a plain append is 6 and every lane but the one whose residue
+// that is has to say something else -- which is exactly the number the primary would not have
+// assigned, and why the statement has to carry it.
+$laneRun = lane_insert($laneHost, $laneConnection, 'ln');
+ok(
+	'a lane predicts the next id in its own residue class, not the next id',
+	$laneRun['predicted'] === ['9'],
+	implode(',', $laneRun['predicted']),
+);
+ok(
+	'the buffered INSERT was rewritten to name the key column and carry that id',
+	count($laneRun['sql']) === 1 &&
+		preg_match('/INSERT INTO "ln" \("id", /i', $laneRun['sql'][0]) === 1 &&
+		str_contains($laneRun['sql'][0], 'VALUES (9, '),
+	$laneRun['sql'][0] ?? 'no insert reached the host',
+);
+ok(
+	'so the id the caller was told is the id the engine committed',
+	$laneRun['committed'] === [9],
+	implode(',', array_map('strval', $laneRun['committed'])),
+);
+
+// A SECOND ROW IN THE SAME BUFFER STRIDES TOO. The rewritten statement supplies its own id, so the
+// next one bases off that rather than off a committed maximum the buffer has not moved.
+[$twoHost, $twoConnection] = lane_connect(1, 3);
+$twoRun = lane_insert($twoHost, $twoConnection, 'ln', 2);
+ok(
+	'consecutive buffered inserts step by the stride rather than by one',
+	$twoRun['predicted'] === ['9', '13'] && $twoRun['committed'] === [9, 13],
+	sprintf(
+		'predicted %s, committed %s',
+		implode(',', $twoRun['predicted']),
+		implode(',', array_map('strval', $twoRun['committed'])),
+	),
+);
+
+// A SECOND MINT IN A LATER BUFFER HAS NOTHING TO BASE OFF, and that is what the mark is for. The
+// lane rolls its forwarded write back and the committed batch is never applied here, so its own
+// maximum is still 5 and the arithmetic above repeats 9. The host writes what it forwarded into
+// cfw_meta; this reads it.
+[$markHost, $markConnection] = lane_connect(1, 3);
+$markConnection->query('CREATE TABLE cfw_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
+$markConnection->query("INSERT INTO cfw_meta (k, v) VALUES ('lane_high:ln', '9')");
+$markRun = lane_insert($markHost, $markConnection, 'ln');
+ok(
+	'a lane mints above the id it forwarded, rather than repeating it',
+	$markRun['predicted'] === ['13'] && $markRun['committed'] === [13],
+	sprintf(
+		'predicted %s, committed %s',
+		implode(',', $markRun['predicted']),
+		implode(',', array_map('strval', $markRun['committed'])),
+	),
+);
+
+// A mark catch-up has overtaken is inert rather than wrong, which is why nothing clears it.
+[$staleHost, $staleConnection] = lane_connect(1, 3);
+$staleConnection->query('CREATE TABLE cfw_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
+$staleConnection->query("INSERT INTO cfw_meta (k, v) VALUES ('lane_high:ln', '2')");
+$staleRun = lane_insert($staleHost, $staleConnection, 'ln');
+ok(
+	'and a mark below the committed maximum changes nothing',
+	$staleRun['predicted'] === ['9'],
+	implode(',', $staleRun['predicted']),
+);
+
+// CONTROL: the primary commits its own writes, so it has no mark and must not pay a read for one.
+[$noMarkHost, $noMarkConnection] = lane_connect(0, 3);
+$noMarkConnection->query('CREATE TABLE cfw_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
+$noMarkConnection->query("INSERT INTO cfw_meta (k, v) VALUES ('lane_high:ln', '99')");
+$noMarkAt = count($noMarkHost->statements);
+$noMarkRun = lane_insert($noMarkHost, $noMarkConnection, 'ln');
+$noMarkReads = array_filter(
+	array_slice($noMarkHost->statements, $noMarkAt),
+	static fn(string $statement): bool => str_contains($statement, 'cfw_meta'),
+);
+ok(
+	'CONTROL: an unpartitioned connection ignores the mark and never reads it',
+	$noMarkRun['predicted'] === ['6'] && $noMarkReads === [],
+	sprintf('predicted %s, %d read(s)', implode(',', $noMarkRun['predicted']), count($noMarkReads)),
+);
+
+// The property the partition exists for: two lanes reading the same committed database cannot mint
+// the same id, so a forwarded batch from either commits without colliding with the other.
+$minted = [];
+for ($lane = 1; $lane <= 3; $lane++) {
+	[$eachHost, $eachConnection] = lane_connect($lane, 3);
+	$run = lane_insert($eachHost, $eachConnection, 'ln');
+	$minted[$lane] = (int) $run['predicted'][0];
+}
+ok(
+	'three lanes on the same base mint three different ids',
+	count(array_unique($minted)) === 3,
+	implode(',', array_map('strval', $minted)),
+);
+ok(
+	'and each one is in its own residue class, which is what keeps that true forever',
+	$minted[1] % 4 === 1 && $minted[2] % 4 === 2 && $minted[3] % 4 === 3,
+	implode(',', array_map('strval', $minted)),
+);
+
+// AUTOINCREMENT is the same arithmetic on a different base, so it partitions the same way; these
+// are the tables whose id a redirect actually carries.
+// lane 3 rather than lane 2, whose residue happens to BE the next append: an arm that agrees with
+// the unpartitioned answer asserts nothing
+[$serialHost, $serialConnection] = lane_connect(3, 3);
+$serialRun = lane_insert($serialHost, $serialConnection, 'lnserial');
+ok(
+	'an AUTOINCREMENT table strides from sqlite_sequence rather than from max(rowid)',
+	$serialRun['predicted'] === ['7'] && $serialRun['committed'] === [7],
+	sprintf(
+		'predicted %s, committed %s',
+		implode(',', $serialRun['predicted']),
+		implode(',', array_map('strval', $serialRun['committed'])),
+	),
+);
+
+// CONTROL, and it is the compatibility requirement rather than a nicety: an unpartitioned
+// connection must buffer the statement Drupal wrote and report the id SQLite would have assigned.
+// Everything above is reachable only from a lane.
+[$controlHost, $controlConnection] = lane_connect(0, 3);
+$controlRun = lane_insert($controlHost, $controlConnection, 'ln');
+ok(
+	'CONTROL: the primary still appends, and still reports the appended id',
+	$controlRun['predicted'] === ['6'] && $controlRun['committed'] === [6],
+	sprintf(
+		'predicted %s, committed %s',
+		implode(',', $controlRun['predicted']),
+		implode(',', array_map('strval', $controlRun['committed'])),
+	),
+);
+ok(
+	'CONTROL: and its INSERT is the one Drupal wrote, with no key column spliced in',
+	count($controlRun['sql']) === 1 &&
+		preg_match('/INSERT INTO "ln" \("v"\)/i', $controlRun['sql'][0]) === 1,
+	$controlRun['sql'][0] ?? 'no insert reached the host',
+);
+// #endregion
 // #region statements the engine rejects
 //
 // A buffered write is reported as successful before anything has run, so a statement SQLite

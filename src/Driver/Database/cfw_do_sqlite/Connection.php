@@ -93,6 +93,37 @@ class Connection extends SqliteDriverConnection
 	private array $rowidSequence = [];
 
 	/**
+	 * The modulus this connection mints rowids on; 1 is no partition at all.
+	 *
+	 * A read-replica lane executes a write, rolls its own copy back and forwards the statements to
+	 * a primary that replays them. So an id SQLite would assign here is not the id assigned there,
+	 * and `lastInsertId()` has already gone into a redirect. Partitioning is
+	 * `auto_increment_increment` from multi-primary MySQL: lane `n` of `lanes` takes every id
+	 * congruent to `n` modulo `lanes + 1`, and the primary is offset 0.
+	 */
+	private int $idStride = 1;
+
+	/**
+	 * This connection's residue class on {@link $idStride}.
+	 */
+	private int $idOffset = 0;
+
+	/**
+	 * Highest rowid this lane minted and forwarded per table, for the life of one buffer.
+	 *
+	 * @var array<string, int>
+	 */
+	private array $laneHigh = [];
+
+	/**
+	 * The `cfw_meta` key prefix the host records a forwarded lane rowid under.
+	 *
+	 * Spelled the same as `LANE_HIGH_PREFIX` in the worker's write-forwarding module; a
+	 * disagreement reads as no mark at all, which is the double-mint this closes.
+	 */
+	private const LANE_HIGH_PREFIX = 'lane_high:';
+
+	/**
 	 * The engine version, cached after the first query that needs it.
 	 */
 	private ?string $engineVersion = null;
@@ -174,7 +205,9 @@ class Connection extends SqliteDriverConnection
 	 * @param array $connection_options
 	 *   The connection options. 'database' is accepted and ignored: the Durable
 	 *   Object's identity selects the database, so the value is documentation.
-	 *   'prefix' is honoured by name-mangling; see PREFIX_PATTERN.
+	 *   'prefix' is honoured by name-mangling; see PREFIX_PATTERN. 'lane' and
+	 *   'lanes' partition the rowid space; see $idStride. Both default to 0,
+	 *   which is the primary and strides on nothing.
 	 *
 	 * @throws HostBridgeException
 	 *   If the client is not a CfwSqlClient, or the prefix names a schema.
@@ -199,10 +232,59 @@ class Connection extends SqliteDriverConnection
 			);
 		}
 
+		$lane = (int) ($connection_options['lane'] ?? 0);
+		$lanes = (int) ($connection_options['lanes'] ?? 0);
+		// lane 0 is the primary and an unset count is a site with no pool; either way the
+		// unpartitioned arithmetic below is the one that was always there
+		if ($lane >= 1 && $lanes >= 1) {
+			$this->idStride = $lanes + 1;
+			$this->idOffset = $lane % $this->idStride;
+		}
+
 		// the core sqlite constructor types its client as \PDO and turns a prefix into an
 		// ATTACHed database, so the base constructor is invoked directly; its own
 		// setPrefix() is the name-mangling implementation this driver wants
 		DatabaseConnection::__construct($connection, $connection_options);
+	}
+
+	/**
+	 * Returns the rowid partition this connection mints on.
+	 *
+	 * @return array{offset: int, stride: int}
+	 *   A stride of 1 is no partition, which is every connection but a forwarding lane.
+	 */
+	public function idPartition(): array
+	{
+		return ['offset' => $this->idOffset, 'stride' => $this->idStride];
+	}
+
+	/**
+	 * The nth rowid at or above a base that belongs to this connection's residue class.
+	 *
+	 * Matches `nextLaneId()` in the worker's write-forwarding module, which is what decides whether
+	 * a lane-originated id may be committed; a disagreement is a refused batch.
+	 *
+	 * @param int $base
+	 *   The highest rowid already taken.
+	 * @param int $nth
+	 *   Which id after it, counting from 1.
+	 *
+	 * @return int
+	 *   The id, which is `base + nth` wherever there is no partition.
+	 */
+	private function laneRowid(int $base, int $nth): int
+	{
+		if ($this->idStride < 2 || $nth < 1) {
+			return $base + $nth;
+		}
+
+		$candidate = max(0, $base) + 1;
+		$shift =
+			((($candidate - $this->idOffset) % $this->idStride) + $this->idStride) %
+			$this->idStride;
+		$first = $shift === 0 ? $candidate : $candidate + ($this->idStride - $shift);
+
+		return $first + ($nth - 1) * $this->idStride;
 	}
 
 	/**
@@ -996,18 +1078,17 @@ class Connection extends SqliteDriverConnection
 
 		if ($kind === SqlAnalyzer::WRITE) {
 			$written = SqlAnalyzer::writtenTables($sql);
+			// only this class can read a schema, and the plan needs the key to tell an insert that
+			// NAMES its id from one that appends. Memoized per table, so the cost is the read
+			// `predictBufferedInsertId()` was going to make anyway
+			$key = count($written) === 1 ? $this->integerPrimaryKeyFor($written[0]) : null;
+			if ($key !== null) {
+				$sql = $this->supplyLaneRowid($sql, $written[0], $key);
+			}
 			return [
 				'rows' => [],
 				'rowCount' => null,
-				'bufferIndex' => $this->buffer->add(
-					$sql,
-					$params,
-					$written,
-					// only this class can read a schema, and the plan needs the key to tell an
-					// insert that NAMES its id from one that appends. Memoized per table, so the
-					// cost is the read `predictBufferedInsertId()` was going to make anyway
-					count($written) === 1 ? $this->integerPrimaryKeyFor($written[0]) : null,
-				),
+				'bufferIndex' => $this->buffer->add($sql, $params, $written, $key),
 			];
 		}
 
@@ -1092,6 +1173,7 @@ class Connection extends SqliteDriverConnection
 		$this->buffer = new TransactionBuffer();
 		$this->rowidMax = [];
 		$this->rowidSequence = [];
+		$this->laneHigh = [];
 	}
 
 	/**
@@ -1102,6 +1184,7 @@ class Connection extends SqliteDriverConnection
 		$this->buffer = null;
 		$this->rowidMax = [];
 		$this->rowidSequence = [];
+		$this->laneHigh = [];
 	}
 
 	/**
@@ -1138,6 +1221,7 @@ class Connection extends SqliteDriverConnection
 			$this->buffer = null;
 			$this->rowidMax = [];
 			$this->rowidSequence = [];
+			$this->laneHigh = [];
 		}
 
 		if (!isset($this->transactionManager)) {
@@ -1186,6 +1270,7 @@ class Connection extends SqliteDriverConnection
 		$this->buffer = null;
 		$this->rowidMax = [];
 		$this->rowidSequence = [];
+		$this->laneHigh = [];
 
 		if ($buffer === null || $buffer->isEmpty()) {
 			return;
@@ -1473,7 +1558,7 @@ class Connection extends SqliteDriverConnection
 			if ($seq === null) {
 				return $this->refusePrediction('sequence-unreadable');
 			}
-			return (string) ($seq + $entry['offset']);
+			return (string) $this->laneRowid($seq, $entry['offset']);
 		}
 
 		$base = 0;
@@ -1486,7 +1571,99 @@ class Connection extends SqliteDriverConnection
 
 		// a supplied id EARLIER in the buffer can have moved the maximum past the committed one,
 		// and counting it as an append would predict an id that already exists
-		return (string) (max($base, $entry['suppliedBefore']) + $entry['offset']);
+		return (string) $this->laneRowid(max($base, $entry['suppliedBefore']), $entry['offset']);
+	}
+
+	/**
+	 * Rewrites a buffered insert so it carries the rowid this lane minted for it.
+	 *
+	 * Predicting alone diverges: the lane answers `lastInsertId()` from its own database, builds a
+	 * redirect from it, and then forwards the statement to a primary that appends by its own
+	 * maximum. The visitor lands on a node that does not exist and nothing errors. Supplying the id
+	 * makes the two the same number, and the rewritten statement is then read back through
+	 * `RowidPlan`'s existing supplied path rather than needing one of its own.
+	 *
+	 * @param string $sql
+	 *   The statement, as it would be buffered.
+	 * @param string $table
+	 *   The table it writes, as SqlAnalyzer named it.
+	 * @param string $integerPrimaryKey
+	 *   That table's INTEGER PRIMARY KEY column.
+	 *
+	 * @return string
+	 *   The rewritten statement, or the original one unchanged wherever this connection mints
+	 *   nothing or the base cannot be read.
+	 */
+	private function supplyLaneRowid(string $sql, string $table, string $integerPrimaryKey): string
+	{
+		if ($this->idStride < 2 || $this->buffer === null) {
+			return $sql;
+		}
+		$schema = $this->rowidSchemaFor($table);
+		if (!$schema['appendable']) {
+			return $sql;
+		}
+
+		$base = $schema['autoincrement']
+			? $this->committedSequence($table)
+			: $this->committedMaxRowid($table);
+		if ($base === null) {
+			return $sql;
+		}
+		// a buffered DELETE FROM t is not read here: minting above the COMMITTED maximum leaves a
+		// gap where the id could have been reused, and a gap is free
+		return RowidPlan::withSuppliedRowid(
+			$sql,
+			$table,
+			$integerPrimaryKey,
+			$this->laneRowid(
+				max($base, $this->buffer->suppliedMax($table), $this->laneHighWater($table)),
+				1,
+			),
+		) ?? $sql;
+	}
+
+	/**
+	 * The highest rowid this lane minted for one table and has not yet seen replicated.
+	 *
+	 * The stride keeps two lanes apart; it does nothing about one lane minting twice. A forwarded
+	 * write commits on the primary and is deliberately not applied here, so this object's own
+	 * maximum never moves for it and the next insert computes the same base. The host records what
+	 * it forwarded under {@link LANE_HIGH_PREFIX} and this reads it back.
+	 *
+	 * Superseded rather than cleared: once catch-up brings the row in, the committed maximum is at
+	 * least this high and the mark stops contributing. A mark that is too high costs a gap; one that
+	 * is too low costs the same id twice.
+	 *
+	 * @param string $table
+	 *   The lower-cased table name.
+	 *
+	 * @return int
+	 *   The mark, or 0 on anything that commits its own writes.
+	 */
+	private function laneHighWater(string $table): int
+	{
+		if ($this->idStride < 2) {
+			return 0;
+		}
+		if (isset($this->laneHigh[$table])) {
+			return $this->laneHigh[$table];
+		}
+
+		$high = 0;
+		try {
+			$result = $this->client()->exec('SELECT v FROM cfw_meta WHERE k = ?', [
+				self::LANE_HIGH_PREFIX . $table,
+			]);
+			$value = $result['rows'][0]['v'] ?? null;
+			$high = is_numeric($value) ? max(0, (int) $value) : 0;
+		} catch (Exception) {
+			// a site with no cfw_meta has forwarded nothing, so there is no mark to miss
+			$high = 0;
+		}
+
+		$this->laneHigh[$table] = $high;
+		return $high;
 	}
 
 	/**

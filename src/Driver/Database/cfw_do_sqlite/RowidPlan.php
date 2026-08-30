@@ -35,6 +35,14 @@ final class RowidPlan
 	private const ROWID_ALIASES = ['rowid', 'oid', '_rowid_'];
 
 	/**
+	 * The one insert shape this class reads, and the one {@link withSuppliedRowid} splices into.
+	 *
+	 * No nested parentheses in either list, so a function call, a sub-select or a second VALUES
+	 * tuple all fail to match rather than being read as an append.
+	 */
+	private const PLAIN_INSERT = '/^\s*INSERT\s+INTO\s+("?[A-Za-z_][A-Za-z0-9_$]*"?)\s*\(([^()]*)\)\s*VALUES\s*\(([^()]*)\)\s*;?\s*$/i';
+
+	/**
 	 * What each buffered insert implies, keyed by buffer index.
 	 *
 	 * Snapshotted per statement rather than kept as one running total, because the index asked
@@ -254,6 +262,63 @@ final class RowidPlan
 	}
 
 	/**
+	 * Returns the highest rowid an insert has SUPPLIED to one table so far.
+	 *
+	 * @param string $table
+	 *   The table SqlAnalyzer named, lower-cased.
+	 *
+	 * @return int
+	 *   The value, or 0 when nothing buffered has named its own id in that table.
+	 */
+	public function suppliedMaxFor(string $table): int
+	{
+		return $this->suppliedMax[$table] ?? 0;
+	}
+
+	/**
+	 * Rewrites a plain insert so it names the rowid it is to be given.
+	 *
+	 * A predicted id is only the id the caller is TOLD; on a forwarding lane the statement is
+	 * replayed on another object whose SQLite appends by its own maximum, so the two disagree and
+	 * nothing errors. Naming the key column closes that: the id in the statement is the id
+	 * committed, wherever it is replayed.
+	 *
+	 * The value is spliced in as a decimal literal rather than as a parameter, so the positional
+	 * ordinals of the existing placeholders do not move.
+	 *
+	 * @param string $sql
+	 *   The statement.
+	 * @param string $table
+	 *   The table SqlAnalyzer named, lower-cased.
+	 * @param string $integerPrimaryKey
+	 *   The table's INTEGER PRIMARY KEY column.
+	 * @param int $rowid
+	 *   The rowid to supply.
+	 *
+	 * @return string|null
+	 *   The rewritten statement, or NULL when the shape is one this class does not read or the
+	 *   insert already names its own id.
+	 */
+	public static function withSuppliedRowid(
+		string $sql,
+		string $table,
+		string $integerPrimaryKey,
+		int $rowid,
+	): ?string {
+		$parsed = self::plainInsert($sql, $table);
+		if ($parsed === null || self::suppliesRowid($parsed[0], $integerPrimaryKey)) {
+			return null;
+		}
+		if (preg_match(self::PLAIN_INSERT, $sql, $parts, PREG_OFFSET_CAPTURE) !== 1) {
+			return null;
+		}
+
+		// spliced from the RIGHT, so the column list's offset is still the one that was matched
+		$spliced = substr_replace($sql, $rowid . ', ', $parts[3][1], 0);
+		return substr_replace($spliced, '"' . $integerPrimaryKey . '", ', $parts[2][1], 0);
+	}
+
+	/**
 	 * Returns the columns AND the VALUES expressions of a plain single-row insert into one table.
 	 *
 	 * The two are returned together and positionally aligned, which is what lets an insert that
@@ -270,13 +335,7 @@ final class RowidPlan
 	 */
 	private static function plainInsert(string $sql, string $table): ?array
 	{
-		// no nested parentheses in either list, so a function call, a sub-select or a second
-		// VALUES tuple all fail to match rather than being read as an append
-		$matched = preg_match(
-			'/^\s*INSERT\s+INTO\s+("?[A-Za-z_][A-Za-z0-9_$]*"?)\s*\(([^()]*)\)\s*VALUES\s*\(([^()]*)\)\s*;?\s*$/i',
-			$sql,
-			$parts,
-		);
+		$matched = preg_match(self::PLAIN_INSERT, $sql, $parts);
 		if ($matched !== 1) {
 			return null;
 		}
