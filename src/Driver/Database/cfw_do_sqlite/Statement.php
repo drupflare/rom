@@ -24,7 +24,7 @@ use Exception;
  * work around (SQLite refusing writes to a table with an open SELECT) rather
  * than working around it.
  *
- * Two behaviours are worth knowing before reading a value out of this class.
+ * Two behaviours affect how a value reads out of this class.
  *
  * **Column values are strings or NULL.** The core sqlite driver sets PDO's
  * ATTR_STRINGIFY_FETCHES, so Drupal is written against string columns; this

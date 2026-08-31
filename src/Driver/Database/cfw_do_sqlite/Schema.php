@@ -107,7 +107,7 @@ class Schema extends SqliteDriverSchema
 	/**
 	 * Whether a table should be created WITHOUT ROWID.
 	 *
-	 * Narrow on purpose. Only cache bins are converted: they are the tables measured, they are
+	 * Narrow. Only cache bins are converted: they are the tables measured, they are
 	 * on the fill path, and their rows are keyed by a hash rather than ordered by insertion.
 	 * A serial column is refused outright because sqlite forbids AUTOINCREMENT on a WITHOUT
 	 * ROWID table, and a table with no declared primary key has nothing to be stored by.

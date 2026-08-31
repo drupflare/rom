@@ -12,7 +12,7 @@ namespace Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite;
  * open, and which tables does it touch, so that a read can be *proven*
  * unaffected by the buffered writes and sent straight to the host.
  *
- * Both answers over-approximate on purpose. An unrecognised statement, or a
+ * Both answers over-approximate. An unrecognised statement, or a
  * write whose target cannot be pinned down, reports as touching everything.
  * That costs a false positive - a read refused or resolved the expensive way -
  * rather than data that is quietly wrong.
@@ -128,8 +128,8 @@ final class SqlAnalyzer
 	 *   ORDER BY, where the range of the value does not matter.
 	 *
 	 * Functions with no builtin equivalent - MD5(), REGEXP, SUBSTRING_INDEX() -
-	 * are deliberately absent from this map: they must fail loudly rather than be
-	 * mapped onto something that behaves differently.
+	 * are absent from this map: they must fail loudly rather than be mapped onto
+	 * something that behaves differently.
 	 */
 	private const FUNCTION_MAP = [
 		'if' => 'iif',
@@ -453,7 +453,7 @@ final class SqlAnalyzer
 	 * verified against the engine: 'a*c' GLOB 'a[*]c', 'a?c' GLOB 'a[?]c' and
 	 * 'a[c' GLOB 'a[[]c' all match.
 	 *
-	 * Escape sequences are deliberately NOT unwound. Core's own implementation,
+	 * Escape sequences are NOT unwound. Core's own implementation,
 	 * sqlite\Connection::sqlFunctionLikeBinary(), runs preg_quote() over the
 	 * pattern and then replaces % and _ unconditionally, so it treats the
 	 * backslashes escapeLike() inserts as literal backslashes to be matched. This
