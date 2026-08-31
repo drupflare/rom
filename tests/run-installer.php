@@ -159,7 +159,7 @@ function clone_drupal_root(string $source, string $target): string
 	remove_tree($target);
 	mkdir($target, 0775, true);
 
-	// sites/ is excluded deliberately: the source may hold an installed site, and
+	// sites/ is excluded: the source may hold an installed site, and
 	// inheriting its settings.php would make the installer refuse
 	$entries = array_diff(scandir($source) ?: [], ['.', '..', 'sites']);
 	$strategies = ['cp -R --reflink=auto', 'cp -Rc', 'cp -R'];
@@ -551,7 +551,7 @@ if ($control === null) {
 			implode(',', array_diff($controlTables, $builtTables)),
 	);
 
-	// watchdog is deliberately not compared: a PHP deprecation raised by the runtime
+	// watchdog is not compared: a PHP deprecation raised by the runtime
 	// rather than by Drupal lands in it, so it differs by PHP version and not by driver
 	$differing = [];
 	foreach ($built ?? [] as $table => $count) {

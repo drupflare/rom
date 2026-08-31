@@ -403,7 +403,7 @@ ok('savepoint rollback discards the inner write', $discarded === 0, "discarded=$
 $connection->query('CREATE TABLE {t} (id INTEGER PRIMARY KEY, v TEXT)');
 $transaction = $connection->startTransaction();
 $connection->query('INSERT INTO {t} (id, v) VALUES (1, :v)', [':v' => 'one']);
-// the same primary key, so the second statement genuinely fails during replay
+// the same primary key, so the second statement fails during replay
 $connection->query('INSERT INTO {t} (id, v) VALUES (1, :v)', [':v' => 'clash']);
 $threw = false;
 try {
@@ -433,7 +433,7 @@ $connection
 	->fields(['id' => 1, 'v' => 'committed'])
 	->execute();
 $transaction = $connection->startTransaction();
-// AN UNPREDICTABLE INSERT, chosen deliberately. This block used to insert
+// AN UNPREDICTABLE INSERT, chosen for that. This block used to insert
 // `(id, v) VALUES (1, ...)`, which supplies its own rowid, and a plain append is predicted by
 // arithmetic -- so neither shape provokes the refusal it is here to assert. A conditional UPDATE
 // after the insert blocks the table, which leaves a replay as the only way to learn the id, and a
@@ -922,7 +922,7 @@ ok(
 
 // The differential. Core implements LIKE BINARY as a PHP callback registered on
 // the connection, so parity with THAT is the contract -- not parity with MySQL.
-// Its quirks are inherited on purpose: it runs preg_quote() over the pattern and
+// Its quirks are inherited: it runs preg_quote() over the pattern and
 // then replaces % and _ unconditionally, so escapeLike()'s backslashes are
 // literal backslashes to be matched, and there is no ESCAPE handling at all.
 $differentialPdo = new \PDO('sqlite::memory:', null, null, [
@@ -1922,6 +1922,29 @@ function lane_insert(FakeHost $host, Connection $connection, string $table, int 
 	return ['predicted' => $predicted, 'committed' => $committed, 'sql' => $sql];
 }
 
+/**
+ * The tables a host was told this connection minted an id for.
+ *
+ * @param FakeHost $host
+ *   The host, read for the transaction payloads it received.
+ *
+ * @return string[]
+ *   The reported tables, in order, deduplicated.
+ */
+function lane_minted(FakeHost $host): array
+{
+	$out = [];
+	foreach ($host->txnRequests as $request) {
+		foreach ($request['statements'] ?? [] as $statement) {
+			if (isset($statement['minted'])) {
+				$out[] = $statement['minted'];
+			}
+		}
+	}
+
+	return array_values(array_unique($out));
+}
+
 [, $primaryConnection] = lane_connect(0, 3);
 ok(
 	'lane 0 is the primary and strides on nothing',
@@ -1961,6 +1984,19 @@ ok(
 	'so the id the caller was told is the id the engine committed',
 	$laneRun['committed'] === [9],
 	implode(',', array_map('strval', $laneRun['committed'])),
+);
+
+// THE HOST CANNOT DERIVE THIS FROM THE STATEMENT, and it has to have it. Reading the first value
+// of a plain insert positionally matches `INSERT INTO sequences (value) VALUES (7)` too, so an
+// allow-list built that way authorises the one table a stride cannot make safe. Only the driver
+// knows the id came from its own residue class, so it says so.
+// `lnserial` is in the list because lane_connect()'s own seed inserts are UNBUFFERED and those now
+// stride too; the assertion is that `ln` is reported, not that it is alone
+$laneMinted = lane_minted($laneHost);
+ok(
+	'and the statement carries the table whose id this lane minted',
+	in_array('ln', $laneMinted, true),
+	implode(',', $laneMinted),
 );
 
 // A SECOND ROW IN THE SAME BUFFER STRIDES TOO. The rewritten statement supplies its own id, so the
@@ -2047,14 +2083,84 @@ ok(
 // the unpartitioned answer asserts nothing
 [$serialHost, $serialConnection] = lane_connect(3, 3);
 $serialRun = lane_insert($serialHost, $serialConnection, 'lnserial');
+// the value rather than a literal, because the seed rows are themselves strided now: this table
+// appends, so lane_connect()'s five unbuffered seeds land at 4, 8, 12, 16, 20 rather than 1 to 5.
+// What the case is about is that the id comes from the SEQUENCE and lands in this lane's class
 ok(
 	'an AUTOINCREMENT table strides from sqlite_sequence rather than from max(rowid)',
-	$serialRun['predicted'] === ['7'] && $serialRun['committed'] === [7],
+	$serialRun['predicted'] === ['23'] && $serialRun['committed'] === [23] && 23 % 4 === 3,
 	sprintf(
 		'predicted %s, committed %s',
 		implode(',', $serialRun['predicted']),
 		implode(',', array_map('strval', $serialRun['committed'])),
 	),
+);
+
+// AN UNBUFFERED WRITE IS THE WORKLOAD FORWARDING NEVER SAW. Drupal issues plenty of writes outside
+// a transaction, and those took runDirect() to cfwSqlExec -- a bridge with no rollback, so the
+// host's replica guard could only refuse them. Every forwarding test drove the collector directly
+// and none of them noticed. A partitioned lane replays such a write as a one-statement transaction
+// instead, which is the bridge the guard already knows how to downgrade.
+[$bareHost, $bareConnection] = lane_connect(2, 3);
+$bareMark = count($bareHost->txnRequests);
+$bareId = (string) $bareConnection
+	->insert('ln')
+	->fields(['v' => 'bare.1'])
+	->execute();
+$bareRequests = array_slice($bareHost->txnRequests, $bareMark);
+ok(
+	'an unbuffered write on a lane goes through the transaction bridge, not the exec bridge',
+	count($bareRequests) === 1 && count($bareRequests[0]['statements'] ?? []) === 1,
+	sprintf('%d transaction(s) reached the host', count($bareRequests)),
+);
+ok(
+	'and it strides, so it cannot take an id another writer holds',
+	$bareId === '6' && ((int) $bareId) % 4 === 2,
+	$bareId,
+);
+ok(
+	'and it reports the table it minted for, so the host may forward it as partitioned',
+	($bareRequests[0]['statements'][0]['minted'] ?? null) === 'ln',
+	json_encode($bareRequests[0]['statements'][0]['minted'] ?? null),
+);
+
+// THE SECOND ONE IS WHERE THE MEMO BITES. Inside a buffer the next insert bases off suppliedMax();
+// there is no buffer spanning two of these, and the schema memo held the pre-insert maximum, so both
+// minted the same id. It surfaced here only because lnserial has a UNIQUE constraint to fail on.
+$bareSecond = (string) $bareConnection
+	->insert('ln')
+	->fields(['v' => 'bare.2'])
+	->execute();
+ok(
+	'and a second unbuffered write does not repeat the first id',
+	$bareSecond === '10' && ((int) $bareSecond) % 4 === 2,
+	sprintf('first %s, second %s', $bareId, $bareSecond),
+);
+
+// A LANE CANNOT COMMIT ONE EITHER WAY. Without the host's transaction primitive there is no
+// rollback, so running it locally would land an authoritative row on a replica; the refusal names
+// that rather than failing somewhere further in.
+$noTxnHost = new FakeHost();
+$noTxnConnection = new Connection(new CfwSqlClient($noTxnHost->execBridge(), null), [
+	'prefix' => '',
+	'database' => 'do',
+	'lane' => 1,
+	'lanes' => 3,
+]);
+$noTxnConnection->query('CREATE TABLE {ln} (id INTEGER PRIMARY KEY, v TEXT)');
+$noTxnRefusal = null;
+try {
+	$noTxnConnection
+		->insert('ln')
+		->fields(['v' => 'x'])
+		->execute();
+} catch (Throwable $e) {
+	$noTxnRefusal = $e->getMessage();
+}
+ok(
+	'a partitioned lane refuses an unbuffered write it can neither forward nor roll back',
+	$noTxnRefusal !== null && str_contains($noTxnRefusal, 'neither forwarded nor rolled back'),
+	$noTxnRefusal ?? 'the write was accepted',
 );
 
 // CONTROL, and it is the compatibility requirement rather than a nicety: an unpartitioned
@@ -2076,6 +2182,11 @@ ok(
 	count($controlRun['sql']) === 1 &&
 		preg_match('/INSERT INTO "ln" \("v"\)/i', $controlRun['sql'][0]) === 1,
 	$controlRun['sql'][0] ?? 'no insert reached the host',
+);
+ok(
+	'CONTROL: so it reports minting nothing, and no table becomes originable through it',
+	lane_minted($controlHost) === [],
+	implode(',', lane_minted($controlHost)),
 );
 // #endregion
 // #region statements the engine rejects
@@ -2122,7 +2233,7 @@ ok(
 	$rejected === null ? 'nothing was thrown' : $rejected->getMessage(),
 );
 
-// the whole point: the transaction is still usable, so core's recovery can run
+// the transaction is still usable, so core's recovery can run
 $absentBefore = $rejectConnection->speculativeCount();
 ok(
 	'asking a second time reports 0 rows changed, because the statement did not happen',
@@ -2264,7 +2375,7 @@ unset($rejectTransaction);
 // -- so that is what this driver uses, reached by calling the grandparent constructor.
 //
 // The point of these assertions is ISOLATION: two connections over the SAME host must not see
-// each other's tables. Both connections below share one FakeHost on purpose; a fresh host per
+// each other's tables. Both connections below share one FakeHost; a fresh host per
 // connection would make the isolation trivially true and prove nothing.
 echo "\nTable prefix\n";
 
@@ -2611,11 +2722,7 @@ try {
 ok('an oversized value is refused rather than truncated', $capMessage !== '');
 ok('the refusal names the placeholder', str_contains($capMessage, ':p'), $capMessage);
 ok('and the cap', str_contains($capMessage, (string) Connection::MAX_RECORD_BYTES), $capMessage);
-ok(
-	'and says the driver deliberately does not chunk it',
-	str_contains($capMessage, 'rows-written'),
-	$capMessage,
-);
+ok('and says the driver does not chunk it', str_contains($capMessage, 'rows-written'), $capMessage);
 // CONTROL: a value one byte under the cap is not refused, or the check would be a blanket ban
 $underThrew = false;
 try {

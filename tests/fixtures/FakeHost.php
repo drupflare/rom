@@ -184,6 +184,16 @@ final class FakeHost
 	public array $statements = [];
 
 	/**
+	 * Every decoded transaction request, in order.
+	 *
+	 * The statement list alone loses the per-statement fields the host reads but never runs, and
+	 * `minted` is one of them.
+	 *
+	 * @var array
+	 */
+	public array $txnRequests = [];
+
+	/**
 	 * Opens the in-memory database that backs every bridged statement.
 	 */
 	public function __construct()
@@ -225,6 +235,7 @@ final class FakeHost
 		return function (string $json): string {
 			$this->txnCalls++;
 			$request = pw_decode(json_decode($json, true));
+			$this->txnRequests[] = $request;
 			$commit = (bool) ($request['commit'] ?? false);
 			if (!$commit) {
 				$this->speculativeCalls++;
@@ -285,7 +296,7 @@ final class FakeHost
 	{
 		$this->statements[] = $sql;
 		if ($this->failOn !== null && str_contains($sql, $this->failOn)) {
-			throw new \RuntimeException('deliberate host failure');
+			throw new \RuntimeException('induced host failure');
 		}
 		if (count($params) > self::MAX_PLACEHOLDERS) {
 			// the host's own wording, so a driver that catches it matches on the real text

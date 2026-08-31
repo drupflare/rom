@@ -194,7 +194,7 @@ if ($cfwCoverage['suite'] !== null) {
 	}
 	$cfwSuiteFile = $cfwSuite['file'];
 
-	// an unmeasured suite runs with nothing loaded ahead of it, which is the whole point: the
+	// an unmeasured suite runs with nothing loaded ahead of it: the
 	// composer tree is what it collides with
 	if (!$cfwSuite['measured']) {
 		$argv = [__DIR__ . '/' . $cfwSuiteFile, $cfwCoverage['root']];
