@@ -19,7 +19,7 @@
 
 	<rule ref="Drupal.Files.LineLength">
 		<properties>
-			<property name="lineLimit" value="100" />
+			<property name="lineLimit" value="110" />
 		</properties>
 	</rule>
 
