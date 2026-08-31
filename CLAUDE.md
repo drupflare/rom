@@ -4,11 +4,11 @@ A Drupal 11.2+ database driver for **Cloudflare Durable Object SQLite**. Publish
 `drupflare/rom`; consumed by `drupflare/worker`. Useful to anyone putting Drupal on DO storage,
 independent of the wasm work.
 
-## Two names, on purpose
+## Two Names
 
 The repository and the Composer package are `rom`. The **module machine name, the driver
 directory, the PSR-4 namespace root and `extra.installer-name` are all `cfw_do_sqlite`** and were
-deliberately not renamed with the repo.
+not renamed with the repo.
 
 A Drupal database driver's directory name IS the `driver` value in `settings.php`, and the
 namespace is derived from it. `worker/src/site-do.ts` writes all three:
@@ -163,7 +163,7 @@ note was written while the tree was 2-space formatted, where the sniff could fir
 reason. Under tabs it asserts "parent indent + 2 spaces" against a file with no indent spaces, so
 it fires on every array element regardless of content and carries no signal.
 
-A `LongLineDeclaration` exclusion for `tests/run-driver-suite.php` is deliberate: a suite of
+A `LongLineDeclaration` exclusion for `tests/run-driver-suite.php` is intended: a suite of
 one-assertion-per-line reads worse with expected values split across lines.
 
 **A malformed `phpcs.xml.dist` fails silently and reports a fake pass.** Verify a ruleset change by

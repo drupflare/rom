@@ -178,7 +178,7 @@ never entered.
 
 Everything else is inherited. `Select`, `Insert`, `Truncate`, the condition compiler, the
 type map and the table-rebuild dance all come from
-`Drupal\sqlite\Driver\Database\sqlite`, because the engine underneath genuinely is SQLite.
+`Drupal\sqlite\Driver\Database\sqlite`, because the engine underneath is SQLite.
 Two exceptions: `Schema` overrides one method to substitute the collation and one to fix
 `findTables()` under a prefix, and `Upsert` is overridden because of the bound-parameter
 ceiling below.
@@ -238,9 +238,8 @@ the connection is in.
 | `rowCount()` of a buffered write         | throws                                                           |
 | `$connection->insert()` in a transaction | **throws**, because `Insert::execute()` returns `lastInsertId()` |
 
-The last row matters most, and it was found by running the suite rather than by reading
-the code: without `cfwSqlTxn` the insert query builder cannot be used inside a transaction
-at all, and since Drupal's own multi-row `Insert::execute()` opens a transaction, any
+The last row matters most: without `cfwSqlTxn` the insert query builder cannot be used inside a
+transaction at all, and since Drupal's own multi-row `Insert::execute()` opens a transaction, any
 multi-row insert fails too.
 
 ---
@@ -288,7 +287,7 @@ default to 0; see [Partitioned Rowids](#-partitioned-rowids).
 ## 🔖 Table Prefixes
 
 `'prefix' => 'site1_'` works. `{node}` becomes `"site1_node"`, and two connections to the
-same Durable Object with different prefixes do not see each other's tables — asserted, over
+same Durable Object with different prefixes do not see each other's tables. That is asserted over
 one shared host, because a fixture per connection would make isolation trivially true and
 prove nothing.
 
@@ -298,8 +297,8 @@ prove nothing.
 and no files, so there is nothing to attach and no schema to name. What does have an
 analogue is the mechanism in the **base** `Connection`, which every non-sqlite driver
 already uses: `setPrefix()` folds the prefix into the identifier itself. This driver calls
-the grandparent constructor, so that is the implementation it gets — not as a workaround,
-but as the one of core's two prefix mechanisms that this engine can support.
+the grandparent constructor, so that is the implementation it gets: the one of core's two
+prefix mechanisms this engine can support.
 
 | Piece                                        | Under a prefix                                                              |
 | -------------------------------------------- | --------------------------------------------------------------------------- |
@@ -340,16 +339,25 @@ statement list to the primary to replay. `lastInsertId()` has already gone into 
 then, and the primary's SQLite assigns by its own maximum, so the two disagree and nothing
 errors.
 
-A non-zero `lane` changes two things:
+A non-zero `lane` changes three things:
 
 - `lastInsertId()` for a buffered insert answers with the next id in this connection's residue
   class rather than the next id, so no two connections in the pool can name the same one.
 - A plain `INSERT INTO t (cols) VALUES (...)` is rewritten to name the table's integer primary
   key and carry that value, so the id the caller was told is the id that gets committed.
+- A write issued outside a Drupal transaction is replayed as a one-statement transaction rather
+  than sent to the exec bridge. The exec bridge has no rollback, so a host that forwards writes
+  cannot intercept one; the transaction bridge is the form it can downgrade and hand on. DDL is
+  excluded, since it mints no rowid.
 
 The value is spliced in as a decimal literal, so the ordinals of the existing placeholders do
 not move. Statements the driver does not parse as a plain single-row insert are left alone. The
 sequence gains gaps, which Drupal tolerates because an entity id is opaque.
+
+Consecutive unbuffered writes are the case that needs the mark. Inside one transaction the next
+insert bases off the buffer's own supplied maximum; there is no buffer spanning two unbuffered
+writes, and the schema memo holds the pre-insert maximum, so both would mint the same id. The
+connection records each id it supplies under `lane_high:<table>` and bases the next one off that.
 
 This is `auto_increment_offset` and `auto_increment_increment` from multi-primary MySQL.
 
@@ -358,7 +366,7 @@ This is `auto_increment_offset` and `auto_increment_increment` from multi-primar
 ## 🧱 Platform Limits
 
 Properties of Durable Object SQLite, every one measured on deployed infrastructure rather
-than read from documentation. They belong in release notes, not in support tickets.
+than read from documentation.
 
 | Limit                                      | Measured behaviour                                                                                 |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------- |
@@ -382,9 +390,9 @@ of non-ASCII text is case-**sensitive** here, and it affects username and email 
 taxonomy term matching and `LIKE`. The fix lives in the runtime's SQLite build, not in a
 driver.
 
-**The 100-parameter ceiling is the cache write path, not a corner case.**
+**The 100-parameter ceiling binds the cache write path.**
 `DatabaseBackend::setMultiple()` upserts in chunks of `MAX_ITEMS_PER_CACHE_SET = 100` rows
-over 7 columns, which is **700 placeholders** — core's own chunking is already 7x over. A
+over 7 columns, which is **700 placeholders**; core's own chunking is already 7x over. A
 cold `cache_discovery` write (82 entries, 574 placeholders) made every render fail with a 500. `Upsert` therefore re-batches by **placeholder count** rather than row count, because
 the limit counts parameters and a row's width is not fixed, and wraps multiple batches in
 one transaction so a half-applied cache set is never observable. `Insert` is still
@@ -394,15 +402,15 @@ inherited and is safe: it executes one statement per row.
 refuses over-length patterns on the **translated** form, which is what protects a Views
 "contains" filter. A plain `LIKE` with a bound pattern is invisible to the driver and
 fails in the engine. Note also that `likeToGlob()` triples an asterisk, so 20 asterisks
-become a 60-byte GLOB pattern and are refused — the refusal reports the translated length
-for exactly that reason. `Schema::findTables()` is the one place the driver builds a `LIKE`
+become a 60-byte GLOB pattern and are refused, which is why the refusal reports the translated
+length. `Schema::findTables()` is the one place the driver builds a `LIKE`
 pattern itself, and it checks the same ceiling, because a table prefix is prepended to the
 caller's expression and counts towards those 50 bytes.
 
 **Wide-integer reads cannot be fixed at driver level.** `ctx.storage.sql` hands INTEGER
 columns back as JS doubles, so precision is gone before anything in PHP can see it; the
-codec then carries the wrong number faithfully. Storage is exact — `CAST(col AS TEXT)`
-returns all the digits — so a fix would mean selecting wide columns as text, which needs
+codec then carries the wrong number faithfully. Storage is exact (`CAST(col AS TEXT)`
+returns all the digits), so a fix would mean selecting wide columns as text, which needs
 schema knowledge the driver does not have at query time. Drupal core never stores integers
 that wide; the exposure is contrib holding 64-bit ids.
 
@@ -418,11 +426,11 @@ In descending order of how likely you are to hit it.
    behaviour.
 2. **Cost is quadratic in the worst case.** Each dirty read replays the whole buffer, so a
    transaction with W writes and R dirty reads executes O(W\*R) statements inside the
-   Durable Object. See [Cost](#-cost) for what that actually measured.
+   Durable Object. See [Cost](#-cost) for what that measured.
 3. **A non-deterministic write replays differently.** `random()`, `CURRENT_TIMESTAMP` or an
    implicit rowid can take one value during a speculative read and another during the
    commit replay. Drupal supplies timestamps from PHP rather than SQL, so the exposure is
-   narrow — and a rowid from `lastInsertId()` matches the committed one only because the
+   narrow, and a rowid from `lastInsertId()` matches the committed one only because the
    Durable Object gate serialises events so no other writer can advance the sequence in
    between. If that gate is ever removed, this breaks. The replay cache _freezes_ the first
    value a statement produced instead of letting a later replay produce a different one,
@@ -430,20 +438,19 @@ In descending order of how likely you are to hit it.
    commit replay that rolls the dice again.
 4. **A savepoint is a buffer index, not a database savepoint.** Rolling back to one
    truncates the list, and releasing one releases every savepoint after it, matching
-   SQLite. For the way Drupal uses savepoints — nested `Transaction` objects — the list is
+   SQLite. For the way Drupal uses savepoints (nested `Transaction` objects) the list is
    the whole state. It is also the only way the buffer shrinks, and the only thing that
    invalidates a cached replay result.
 5. **A failed commit leaves the Drupal transaction stack dirty.** The replay throws,
    `commitClientTransaction()` sets `CommitFailed` and rethrows so the real SQLite message
    survives, and the stack item is never voided, so its destructor throws
    `TransactionOutOfOrderException`. That is core's behaviour for any driver whose client
-   `commit()` throws, PDO included, so it is not introduced here — but a mid-replay failure
-   is messy on the way out.
+   `commit()` throws, PDO included, so it is not introduced here; a mid-replay failure
+   is still messy on the way out.
 6. **A statement withheld before an exception stays withheld.** If `Insert::execute()`
    buffers its INSERT and then throws from `lastInsertId()`, the INSERT is still in the
    buffer; a caller that swallows the exception and commits anyway lands a row with an id
-   it never learned. Tested, and documented rather than papered over: the write genuinely
-   was issued inside the transaction.
+   it never learned. Tested: the write was issued inside the transaction.
 7. **`voidClientTransaction()` commits the buffer.** Drupal calls it when it believes the
    database committed behind its back. Nothing was sent, so the faithful equivalent is to
    commit; dropping the buffer would silently lose writes Drupal considers durable.
@@ -504,8 +511,8 @@ covered by the 50-byte refusal rather than by the differential suite.
 
 The engine floor is established by **feature probe**, not by asking, because
 `sqlite_version()` is refused. It reports 3.46.0, proven by `unhex()` which landed in
-3.46. That matters more than it looks: Drupal 11.4.5 gates installation on 3.45, and
-`concat` — the obvious probe — only proves 3.44 and would have **failed** the gate.
+3.46. Drupal 11.4.5 gates installation on 3.45, and
+`concat`, the obvious probe, only proves 3.44 and would have **failed** the gate.
 `engineVersionIsFloor()` reports that the number is a floor rather than a reported version,
 so anything displaying it can say so.
 
@@ -549,7 +556,7 @@ on the MEMFS/PDO path. The cache ladder around it is 1 ms / 26 ms / 34 ms / 81 m
 | errors Drupal raised and recovered from         | 18                           |
 | result                                          | 39 tables, 939 rows, HTTP200 |
 
-**92% of everything the engine executed was a replay** — 37,814 of 41,170. The node-save figure
+**92% of everything the engine executed was a replay**, 37,814 of 41,170. The node-save figure
 above (54 of 59) is the same ratio at a smaller scale; at 380 statements per transaction it is the
 whole cost. Hundreds of rows per transaction is where O(W\*R) first hurts.
 
@@ -562,7 +569,7 @@ Reducing the cost means fewer _resolutions_, not a faster bridge. `Insert::execu
 `lastInsertId()` immediately after buffering each row, and Drupal's multi-row `Insert::execute()`
 discards every id but the last while still paying a replay for each.
 
-The replay cache does not move that number. It removes repeated resolutions —
+The replay cache does not move that number. It removes repeated resolutions:
 a second `lastInsertId()` for the same buffered insert, a deferred `rowCount()` a dirty
 read has already replayed past. It cannot remove the _first_ resolution of a newly
 buffered statement, because the newest buffer index is by definition the one no earlier
@@ -576,7 +583,7 @@ the number of resolutions rather than their repeat rate.
 count of the same thing, since a counter asserted against itself proves nothing. The installer
 figures are read directly off them.
 
-They are wired into an observability story rather than only into tests:
+They are read outside the tests too:
 `worker/src/drupal/site-php.ts:1316` reads `statementCount()` into `$out['statementCount']`
 on the `/driver` route. The four counters live on the `CfwSqlClient`, so they are per-connection,
 and Drupal opens more than one connection across an install. `FakeHost`'s counters are
@@ -593,7 +600,7 @@ process-wide, so the harness compares the two rather than assuming they match.
 | [`drupflare/phasm`](https://github.com/drupflare/phasm)         | the PHP-to-WebAssembly build that produces the interpreter this driver runs inside                                 |
 
 This driver does **not** require `drupflare/drupflare`, and that module does not require
-this driver — they share no class and no service. They are listed in each other's `suggest`
+this driver; they share no class and no service. They are listed in each other's `suggest`
 because a Worker deployment normally wants both.
 
 ---
