@@ -24,7 +24,7 @@ final class TransactionBuffer
 	 * A failed entry keeps its slot so that every index already handed out stays
 	 * valid; it is simply never replayed again. See discardFailed().
 	 *
-	 * @var array<int, array{sql: string, params: array, tables: string[], failed: bool}>
+	 * @var array<int, array{sql: string, params: array, tables: string[], failed: bool, minted: string|null}>
 	 */
 	private array $statements = [];
 
@@ -155,6 +155,10 @@ final class TransactionBuffer
 	 * @param string|null $integerPrimaryKey
 	 *   The written table's INTEGER PRIMARY KEY column, when it has one. Only the connection can
 	 *   read a schema, so it arrives here rather than being looked up.
+	 * @param string|null $mintedTable
+	 *   The table whose rowid this connection minted from its own residue class and spliced into
+	 *   the statement, or NULL when the id is SQLite's to assign. It rides out on the payload so the
+	 *   host can tell an id a lane originated safely from one it merely wrote.
 	 *
 	 * @return int
 	 *   The index of the buffered statement.
@@ -164,6 +168,7 @@ final class TransactionBuffer
 		array $params,
 		array $tables,
 		?string $integerPrimaryKey = null,
+		?string $mintedTable = null,
 	): int {
 		$index = count($this->statements);
 		$this->statements[$index] = [
@@ -173,6 +178,7 @@ final class TransactionBuffer
 			'failed' => false,
 			// kept so a rebuild after a failed statement re-reads a supplied id the same way
 			'integerPrimaryKey' => $integerPrimaryKey,
+			'minted' => $mintedTable,
 		];
 		$this->markDirty($tables);
 		$this->rowidPlan->record($index, $sql, $tables, $params, $integerPrimaryKey);
@@ -480,17 +486,23 @@ final class TransactionBuffer
 	 * @param int $index
 	 *   The last index to include; a negative value yields an empty list.
 	 *
-	 * @return array<int, array{sql: string, params: array}>
+	 * @return array<int, array{sql: string, params: array, minted?: string}>
 	 *   The statements.
 	 */
 	private function slice(int $index): array
 	{
 		$out = [];
 		foreach ($this->liveIndexesUpTo($index) as $i) {
-			$out[] = [
+			$entry = [
 				'sql' => $this->statements[$i]['sql'],
 				'params' => $this->statements[$i]['params'],
 			];
+			// omitted rather than sent as null, so an ordinary write's payload is the shape it
+			// always was and only a minted id costs a field
+			if (($this->statements[$i]['minted'] ?? null) !== null) {
+				$entry['minted'] = $this->statements[$i]['minted'];
+			}
+			$out[] = $entry;
 		}
 		return $out;
 	}

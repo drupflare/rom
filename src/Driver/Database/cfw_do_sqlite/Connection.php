@@ -18,12 +18,12 @@ use Throwable;
  * Drupal connection to ctx.storage.sql inside a Durable Object.
  *
  * It extends the core sqlite driver rather than the base Connection because the
- * engine underneath genuinely is SQLite: the SQL generation, the query builders,
+ * engine underneath is SQLite: the SQL generation, the query builders,
  * the schema handling and the LIKE/GLOB operator map are all correct as they
  * stand and are not forked here. What changes is everything that assumed PDO and
  * a file on disk.
  *
- * Four differences are worth reading before using this class.
+ * Four differences from the core driver:
  *
  * **No PDO.** The client connection is a CfwSqlClient, which calls a function the
  * host installed on the PHP Module. PHP runs inside the Durable Object, so a
@@ -306,7 +306,7 @@ class Connection extends SqliteDriverConnection
 	 */
 	public static function open(array &$connection_options = [])
 	{
-		// init_commands are deliberately not executed. The core driver sets
+		// init_commands are not executed. The core driver sets
 		// "PRAGMA journal_mode=WAL" here; ctx.storage.sql manages its own
 		// journalling and exposes no user-visible WAL, so the pragma is at best
 		// ignored and at worst refused.
@@ -427,7 +427,7 @@ class Connection extends SqliteDriverConnection
 		// to be rewritten from LIKE syntax to GLOB syntax. That rewrite happens in
 		// PHP in runStatement(), where it can be exact.
 		//
-		// The postfix is dropped deliberately: core appends " ESCAPE '\'", and
+		// The postfix is dropped: core appends " ESCAPE '\'", and
 		// `GLOB ? ESCAPE '\'` is a three-argument GLOB, which the builtin refuses
 		// with "wrong number of arguments to function GLOB()". Measured.
 		if ($operator === 'LIKE BINARY') {
@@ -457,7 +457,7 @@ class Connection extends SqliteDriverConnection
 	 *
 	 * @throws InvalidQueryException
 	 *   If a marker is not followed by a resolvable named placeholder, or if the
-	 *   rewrite itself fails. Refusing is the point: an untranslated pattern
+	 *   rewrite itself fails. It refuses because an untranslated pattern
 	 *   silently matches nothing.
 	 */
 	private function translateLikeBinary(string &$sql, array &$params): array
@@ -629,8 +629,8 @@ class Connection extends SqliteDriverConnection
 	 * Re-applies an original LIKE pattern to rows fetched with a widened one.
 	 *
 	 * Built as a regex rather than by calling `like` again, because there is no `like` to call:
-	 * the whole point is that the engine could not carry this pattern. `%` and `_` are the only
-	 * two wildcards, `\` escapes them, and everything else is a literal.
+	 * the engine could not carry this pattern, which is why the row set was widened. `%` and `_`
+	 * are the only two wildcards, `\` escapes them, and everything else is a literal.
 	 *
 	 * @param array $rows
 	 *   Rows as the host returned them.
@@ -1069,6 +1069,23 @@ class Connection extends SqliteDriverConnection
 			$this->rowidSequence = [];
 		}
 
+		// A NON-TRANSACTIONAL WRITE ON A PARTITIONED LANE MAY NOT GO DIRECT. `runDirect()` reaches
+		// cfwSqlExec, which the host's replica guard cannot downgrade to a speculative replay because
+		// the exec bridge has no rollback -- so such a write was refused and forwarding was
+		// unreachable for any workload that issues one outside a Drupal transaction. Replaying it as a
+		// one-statement transaction hands the host the bridge it already knows how to forward
+		// DDL is excluded: it mints no rowid, so there is nothing to partition, and a replica that
+		// needs a table gets it from the restore rather than from a forwarded CREATE. Leaving it on
+		// the direct path keeps the guard's own verdict about DDL the one that decides
+		if (
+			$this->buffer === null &&
+			$kind === SqlAnalyzer::WRITE &&
+			$this->idStride >= 2 &&
+			preg_match('/^\s*(?:CREATE|DROP|ALTER)\b/i', $sql) !== 1
+		) {
+			return self::filterOutcome($this->runPartitionedWrite($sql, $params), $likeFilters);
+		}
+
 		if ($this->buffer === null) {
 			// ONE exit for every read path, so a widened pattern cannot reach a caller unfiltered
 			// through a branch somebody forgot. `$likeFilters` is empty on every statement that
@@ -1082,13 +1099,18 @@ class Connection extends SqliteDriverConnection
 			// NAMES its id from one that appends. Memoized per table, so the cost is the read
 			// `predictBufferedInsertId()` was going to make anyway
 			$key = count($written) === 1 ? $this->integerPrimaryKeyFor($written[0]) : null;
+			$minted = null;
 			if ($key !== null) {
-				$sql = $this->supplyLaneRowid($sql, $written[0], $key);
+				$rewritten = $this->supplyLaneRowid($sql, $written[0], $key);
+				if ($rewritten !== null) {
+					$sql = $rewritten;
+					$minted = $written[0];
+				}
 			}
 			return [
 				'rows' => [],
 				'rowCount' => null,
-				'bufferIndex' => $this->buffer->add($sql, $params, $written, $key),
+				'bufferIndex' => $this->buffer->add($sql, $params, $written, $key, $minted),
 			];
 		}
 
@@ -1396,12 +1418,95 @@ class Connection extends SqliteDriverConnection
 	}
 
 	/**
+	 * Runs one unbuffered write as a one-statement transaction.
+	 *
+	 * A real buffer is opened and thrown away rather than the minting being reimplemented inline,
+	 * because {@link supplyLaneRowid} reads `suppliedMax()` off it. Two copies of the id arithmetic is
+	 * how a lane starts minting an id another writer already holds, and that failure is silent until
+	 * the rows meet.
+	 *
+	 * On the primary this branch is unreachable: `idStride` is 1 wherever a connection holds no
+	 * residue class, so nothing about the ordinary write path changes.
+	 *
+	 * @param string $sql
+	 *   The write.
+	 * @param array $params
+	 *   Its parameters.
+	 *
+	 * @return array{rows: array, rowCount: int|null, bufferIndex: int|null}
+	 *   The outcome, shaped as the direct path shapes it.
+	 *
+	 * @throws UncommittedStateException
+	 *   If the host cannot replay a transaction, so the write can neither be forwarded nor run.
+	 */
+	private function runPartitionedWrite(string $sql, array $params): array
+	{
+		if (!$this->client()->supportsTransactions()) {
+			throw new UncommittedStateException(
+				sprintf(
+					"This write is on a partitioned lane and the host has not installed '%s', so it can be neither forwarded nor rolled back. Running it here would commit an authoritative row on a replica. Write: %s",
+					CfwSqlClient::TRANSACTION_BRIDGE,
+					$sql,
+				),
+			);
+		}
+
+		$written = SqlAnalyzer::writtenTables($sql);
+		$key = count($written) === 1 ? $this->integerPrimaryKeyFor($written[0]) : null;
+
+		$this->buffer = new TransactionBuffer();
+		try {
+			$minted = null;
+			if ($key !== null) {
+				$rewritten = $this->supplyLaneRowid($sql, $written[0], $key);
+				if ($rewritten !== null) {
+					$sql = $rewritten;
+					$minted = $written[0];
+				}
+			}
+			$this->buffer->add($sql, $params, $written, $key, $minted);
+			$statements = $this->buffer->statements();
+		} finally {
+			// detached before the replay for the reason commitBufferedTransaction() detaches: a throw
+			// must not leave the connection buffering into a transaction Drupal never opened
+			$this->buffer = null;
+		}
+
+		// the schema memo is per transaction on the buffered path and commitBufferedTransaction()
+		// drops it; there is no commit here to hang that on. `laneHigh` is deliberately NOT dropped --
+		// supplyLaneRowid() put this statement's id in it, and that is what the next unbuffered write
+		// bases off, because a forwarded row is rolled back and the committed maximum never moves
+		$this->rowidMax = [];
+		$this->rowidSequence = [];
+
+		// commit TRUE, and on a lane the host rewrites it to FALSE. That asymmetry is the whole
+		// mechanism: this connection asks to commit, the guard forwards the statements to the primary
+		// and rolls this object's copy back, and PHP reads its own write out of the aborted replay
+		$replay = $this->client()->runTransaction($statements, true);
+		$result = $replay['results'][0] ?? null;
+		if (!is_array($result)) {
+			throw new UncommittedStateException(
+				sprintf(
+					'The host replayed a one-statement transaction and returned no result for: %s',
+					$sql,
+				),
+			);
+		}
+
+		return [
+			'rows' => $result['rows'],
+			'rowCount' => $result['changes'],
+			'bufferIndex' => null,
+		];
+	}
+
+	/**
 	 * Answers a read that has to observe buffered writes.
 	 *
 	 * The buffer is replayed and the read evaluated inside one host transaction
 	 * which is then rolled back, so the read sees the writes and the database
 	 * does not. Throwing inside transactionSync() is the measured rollback
-	 * mechanism; this is the same door, used deliberately.
+	 * mechanism, and this uses that same door.
 	 *
 	 * @param string $sql
 	 *   The read.
@@ -1583,6 +1688,11 @@ class Connection extends SqliteDriverConnection
 	 * makes the two the same number, and the rewritten statement is then read back through
 	 * `RowidPlan`'s existing supplied path rather than needing one of its own.
 	 *
+	 * NULL rather than the original statement, so the caller can tell a splice from a no-op. That
+	 * distinction is what the host's origination allow-list is built from: only a table this
+	 * connection minted an id for on its own residue class may be forwarded as partitioned, and
+	 * every other refusal shape returns NULL here.
+	 *
 	 * @param string $sql
 	 *   The statement, as it would be buffered.
 	 * @param string $table
@@ -1590,44 +1700,49 @@ class Connection extends SqliteDriverConnection
 	 * @param string $integerPrimaryKey
 	 *   That table's INTEGER PRIMARY KEY column.
 	 *
-	 * @return string
-	 *   The rewritten statement, or the original one unchanged wherever this connection mints
-	 *   nothing or the base cannot be read.
+	 * @return string|null
+	 *   The rewritten statement, or NULL wherever this connection mints nothing, the base cannot be
+	 *   read, or the shape is not one RowidPlan splices into.
 	 */
-	private function supplyLaneRowid(string $sql, string $table, string $integerPrimaryKey): string
+	private function supplyLaneRowid(string $sql, string $table, string $integerPrimaryKey): ?string
 	{
 		if ($this->idStride < 2 || $this->buffer === null) {
-			return $sql;
+			return null;
 		}
 		$schema = $this->rowidSchemaFor($table);
 		if (!$schema['appendable']) {
-			return $sql;
+			return null;
 		}
 
 		$base = $schema['autoincrement']
 			? $this->committedSequence($table)
 			: $this->committedMaxRowid($table);
 		if ($base === null) {
-			return $sql;
+			return null;
 		}
 		// a buffered DELETE FROM t is not read here: minting above the COMMITTED maximum leaves a
 		// gap where the id could have been reused, and a gap is free
-		return RowidPlan::withSuppliedRowid(
-			$sql,
-			$table,
-			$integerPrimaryKey,
-			$this->laneRowid(
-				max($base, $this->buffer->suppliedMax($table), $this->laneHighWater($table)),
-				1,
-			),
-		) ?? $sql;
+		$id = $this->laneRowid(
+			max($base, $this->buffer->suppliedMax($table), $this->laneHighWater($table)),
+			1,
+		);
+		$rewritten = RowidPlan::withSuppliedRowid($sql, $table, $integerPrimaryKey, $id);
+		if ($rewritten !== null) {
+			// recorded HERE rather than by the caller, so the value comes from the arithmetic that
+			// produced it. Inside a buffer `suppliedMax()` already covers the next insert and
+			// commitBufferedTransaction() clears this; for an unbuffered write there is no buffer
+			// spanning two of them, and this mark is what stops the second repeating the first
+			$this->laneHigh[$table] = max($this->laneHigh[$table] ?? 0, $id);
+		}
+
+		return $rewritten;
 	}
 
 	/**
 	 * The highest rowid this lane minted for one table and has not yet seen replicated.
 	 *
 	 * The stride keeps two lanes apart; it does nothing about one lane minting twice. A forwarded
-	 * write commits on the primary and is deliberately not applied here, so this object's own
+	 * write commits on the primary and is not applied here, so this object's own
 	 * maximum never moves for it and the next insert computes the same base. The host records what
 	 * it forwarded under {@link LANE_HIGH_PREFIX} and this reads it back.
 	 *
@@ -1771,9 +1886,9 @@ class Connection extends SqliteDriverConnection
 	/**
 	 * Reads one table's committed maximum rowid, once per buffer.
 	 *
-	 * Goes straight to the host rather than through runStatement(), and that is the point: the
-	 * committed maximum is wanted precisely because the buffered rows are not in it. Routing this
-	 * through the buffer would see the table is dirty and open the replay this exists to avoid.
+	 * Goes straight to the host rather than through runStatement(): the committed maximum is
+	 * wanted precisely because the buffered rows are not in it. Routing this through the buffer
+	 * would see the table is dirty and open the replay this exists to avoid.
 	 *
 	 * @param string $table
 	 *   The lower-cased table name.

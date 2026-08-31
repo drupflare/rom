@@ -12,8 +12,8 @@ namespace Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite;
  * that owns the database, so a query is a function call across the wasm
  * boundary rather than a round trip to a server. Measured cost of that call is
  * 0.0125 ms, against 0.0070 ms for the in-wasm PDO it replaces, so there is no
- * cache or batching layer here on purpose: it would buy 0.0055 ms per query and
- * cost correctness.
+ * cache or batching layer here: it would buy 0.0055 ms per query and cost
+ * correctness.
  *
  * INTEGERS. The wasm build is 32-bit (PHP_INT_SIZE 4) and a SQLite INTEGER is
  * 64-bit, so every value crossing the boundary goes through the shared codec.
