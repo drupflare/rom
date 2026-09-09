@@ -23,10 +23,14 @@ So renaming it is a bootstrap-breaking change to every existing site's settings,
 override, to `worker/scripts/gen-driver-assets.ts` and to the packed `assets/driver.json`. Do not
 rename it as tidying. If it is ever renamed it is a major version and both repos move together.
 
-## This module exists TWICE and the second copy is what executes
+## This repo is the source and the pack is what executes
 
-`drupflare/worker` keeps its own copy under `drupal/cfw_do_sqlite/`, because **Composer never runs
-on the edge**. The worker packs it into `assets/driver.json`, which the Durable Object mounts.
+**Composer never runs on the edge**, so `drupflare/worker` packs this checkout into
+`assets/driver.json`, which the Durable Object mounts. `worker/scripts/gen-driver-assets.ts` reads
+`../rom` directly, under an allow-list of parts (`src`, `.info.yml`, `.install`, `.module`,
+`.services.yml`) so a checkout's `vendor/` and `node_modules/` stay out of the bundle. The machine
+name comes from the MOUNT rather than the directory, which is why `../rom` provides
+`cfw_do_sqlite`; `ROM_SRC` relocates the checkout, and that is how CI points at `.siblings/`.
 
 **This repo's suite is the authority on behaviour.** A change made only in the worker is untested
 code on the edge. Run the worker's `bun run assets:driver` after any change here, or the packed
@@ -34,18 +38,19 @@ copy goes stale - it has done so twice.
 
 | suite                            | assertions |
 | -------------------------------- | ---------- |
-| `php tests/run-driver-suite.php` | 204        |
+| `php tests/run-driver-suite.php` | 266        |
 | `php tests/run-installer.php`    | 16         |
 | `php tests/pdo-shim.php`         | 61         |
 
 All three take a Drupal root as `$argv[1]` or `DRUPAL_ROOT`. Re-measure the counts before quoting
 them.
 
-**There is no `check:sync` in the worker any more**, so nothing compares this repo's files to the
-copies under `worker/drupal/` - that check was deleted along with `scripts/check-module-sync.ts`,
-and its `REPO_ONLY` set with it. What survives is `worker/tests/node/driver-pack.spec.ts`, which
-asserts `assets/driver.json` matches `worker/drupal/` byte for byte. Keeping this repo and that
-copy aligned is a release, not a hook.
+**The worker's third copy is gone**, along with the `check:sync` that policed it.
+`worker/drupal/cfw_do_sqlite/` was an untracked module-shaped copy that the packer read, so the
+shipping bytes came from a directory nothing kept in sync; `scripts/check-module-sync.ts` picked
+"newer" by mtime and would have overwritten a fix here with the stale text. What survives is
+`worker/tests/node/driver-pack.spec.ts`, which asserts `assets/driver.json` matches this repo's
+files on disk byte for byte - so a stale pack fails the worker's gate rather than shipping quietly.
 
 ## The two PDO fetch flags are version-dependent, and that is not a simplification to make
 
@@ -114,15 +119,21 @@ populates it. Sound because a replay starts from the same committed state and ru
 in order, so result _i_ depends only on the first _i+1_ entries - which never change while
 buffered. A savepoint rollback is the only shrink, so `rollbackTo()` drops the discarded tail.
 
-**It removes repeated resolutions, not the term.** `Insert::execute()` asks for `lastInsertId()`
-straight after buffering each row, and the newest index is by definition uncached, so the
-alternating write-then-read pair is still `N(N+1)` and the suite still asserts **12 for N=3**. Do
-not write that the cache fixed the installer; what would fix it is fewer resolutions, not fewer
-repeats.
+**It removes repeated resolutions, not the triangular term.** A dirty read re-sends
+`TransactionBuffer::statements()` in full, so N writes each followed by a read replay
+1 + 2 + ... + N = `N(N+1)/2` statements. The suite asserts that at **N=4: 10 replayed statements
+over 4 speculative transactions**, one per pair, against `statementCount()` rising by only 7 - the
+gap between the two counters is the finding.
+
+**It used to be `N(N+1)`, twice that, and predicting the AUTOINCREMENT id is what halved it.** Each
+pair also paid an id-resolution replay of the same buffer; a predicted id removed that, and a bare
+insert now costs zero speculative replays. The triangular half is inherent to answering a read
+against a buffer and is still here, so the cache did not fix the installer. What would is fewer
+resolutions, not fewer repeats.
 
 **The installer has now been run and the term is measured rather than predicted.** A `standard`
-install through this driver: **41,170 statements, of which 37,814 were replays - 92%** - across 401
-host transactions, 394 of them speculative, with a widest transaction of **380 statements**. It
+install through this driver: **39,031 statements, of which 35,661 were replays - 91%** - across 389
+host transactions, 382 of them speculative, with a widest transaction of **380 statements**. It
 completes, and the site it builds matches a control install through core's sqlite driver (39 tables,
 939 rows, one extra `system.schema` row for the driver module) with the front page at HTTP 200. So
 the term is dominant AND survivable; the next thing that moves it is Drupal's multi-row
@@ -136,7 +147,7 @@ the term is dominant AND survivable; the next thing that moves it is Drupal's mu
 - **Never widen a limit because a test passes.** These came from a deployed object. Re-measure on a
   deployed worker if you think one is wrong.
 - Transactions are a buffer plus atomic replay via `execTxn()`. Commit, speculative read and
-  rollback are all verified by the suite; do not change the buffering without re-running all 204.
+  rollback are all verified by the suite; do not change the buffering without re-running all 266.
 - **A statement the engine rejects must leave the buffer.** A buffered write reports success before
   it has run, so its refusal only surfaces at a later replay - and if it stays buffered, every later
   replay AND the commit re-run it, so the transaction can never succeed. That is not a corner case:
@@ -153,10 +164,13 @@ The house style is **tabs rendered 4 wide, 100-char lines, LF, UTF-8**, for ever
 including PHP, enforced by `@prettier/plugin-php`. It is NOT Drupal's 2-space standard, and a
 previous session got this backwards by reformatting the PHP to satisfy `drupal/coder`.
 
-**When phpcs disagrees with the house style, phpcs loses.** `phpcs.xml.dist` excludes the nine
-sniff codes that are pure whitespace or brace position, with the measurement inline: at `useTabs`
-the tree reported 5,275 violations across exactly those nine and nothing else. Everything semantic
-stays on. Constants are lowercase `true`/`false`/`null`.
+**When phpcs disagrees with the house style, phpcs loses.** `phpcs.xml.dist` carries **17**
+`exclude name=` entries, **12** of them pure whitespace or brace position; the other five are
+comment casing and end-char, `UpperCaseConstant`, `RedundantUseStatement` and `UnusedVariable`. The
+5,275 violations measured at `useTabs` were counted across the nine whitespace and brace exclusions
+that existed then, so that figure does not attach to the current set - re-count before quoting it
+against today's ruleset. Everything semantic stays on. Constants are lowercase
+`true`/`false`/`null`.
 
 `Drupal.Arrays.Array.ArrayIndentation` IS excluded now. An older note here said not to, and that
 note was written while the tree was 2-space formatted, where the sniff could fire for a real
@@ -174,15 +188,19 @@ XML comment is invalid.
 
 - Never silence PHPStan with an ignore, baseline, `assert()`, inline `@var`, cast, or widened type.
   Run it with `--memory-limit=1G`; 128M OOMs and reports a fake low count.
-- `phpstan.neon` is level 5 over `src/` only. `tests/` is out of scope because the two errors it
-  raises are a constant-pin assertion PHPStan reads as always-true and the `global $fail` counter
-  it cannot track - and both files must stay byte-identical to the worker's copies, so they cannot
-  be restructured here alone. Level 6 needs 42 `missingType.iterableValue` plus 2
-  `missingType.return` annotations.
+- `phpstan.neon` is level 5 over `src/` only. `tests/` is out of scope for a reason the analyser
+  cannot be argued out of: `./vendor/bin/phpstan analyse tests --level=5` reports **26** errors, and
+  14 of them are `PDO::prepare()` / `::query()` / `::commit()` "not found". The suites drive the
+  replacement PDO classes `src/pdo-shim.php` declares, but the analysis host has ext-pdo loaded, so
+  PHPStan resolves the real `PDO` and cannot see the shim - which is the whole condition the shim
+  exists for. Another 7 are `identical.alwaysTrue` on the deliberate constant pins (`=== 50`,
+  `=== 3`), and the rest are `$argv` and `install_drupal` under a CLI/Drupal runtime. None is a
+  defect and none is fixable without restructuring the suite around the analyser. Level 6 over
+  `src/` needs 65 `missingType.iterableValue` plus 2 `missingType.return` annotations.
 - Comments: lowercase, terse, one line, no trailing period, only where the WHY is non-obvious.
 - Default branch is `master`. Every workflow filters on it so a push and its PR do not double-fire.
-- The driver suite is **204 assertions** and the count is the release note: it went 101 -> 120 ->
-  132 -> 147 -> 188 -> 204. Never tag on a lower number; a drop means the suite was weakened.
+- The driver suite is **266 assertions** and the count is the release note: it went 101 -> 120 ->
+  132 -> 147 -> 188 -> 204 -> 266. Never tag on a lower number; a drop means the suite was weakened.
 - **`tests/run-installer.php` is a second lane, 16 assertions, and it is the only one that reaches
   an install-shaped transaction.** The suite drives 5-6 statements per transaction; an install
   drives 380, with DDL and DML interleaved. It installs into a throwaway COPY of the Drupal root
@@ -196,9 +214,12 @@ XML comment is invalid.
   a replay is ONE bridge crossing however many statements run inside it. Each is asserted against
   `FakeHost`'s own count of the same thing, which is the point - a counter asserted against itself
   proves nothing.
-- **A buffered insert costs a speculative replay by itself**, for `lastInsertId()`. Measured while
-  writing those assertions, after a first draft predicted otherwise: a write-then-read pair is 2
-  speculative transactions, so N pairs replay N(N+1) statements rather than N(N+1)/2.
+- **A bare buffered insert now costs zero speculative replays.** It used to cost one by itself, for
+  `lastInsertId()`, which made a write-then-read pair 2 speculative transactions and N pairs
+  `N(N+1)` replayed statements. Predicting the AUTOINCREMENT id removed that half: a pair is now 1
+  speculative transaction and N pairs replay `N(N+1)/2`, asserted at N=4 in
+  `tests/run-driver-suite.php`. The suite still isolates the read's cost by DIFFERENCE, which stays
+  correct whatever the insert costs.
 - the Packagist steps are maintainer-only; `^1.0` needs a `v1.0.0` tag before it resolves from a
   path repository.
 - **Packagist publishes from the webhook, so `release.yml` has no Packagist step and must not get
@@ -216,17 +237,18 @@ XML comment is invalid.
 ## PHP versions: 8.5 works here, and that says nothing about the wasm side
 
 `composer.json` requires `php: ^8.3`, which already permits 8.5. **Verified rather than assumed:** the
-204-assertion driver suite passes on **PHP 8.5.7**, and Drupal core requires `>=8.3.0` with no upper
+266-assertion driver suite passes on **PHP 8.5.7**, and Drupal core requires `>=8.3.0` with no upper
 bound. CI matrices in `build.yml` cover `8.3`, `8.4`, `8.5`.
 
 That was cheap because this module is a database driver: pure PHP, one extension (`ext-json`), no
 plugins, no `Fiber`, no reliance on engine internals. A newer PHP is a matrix entry.
 
-**Do not generalise it.** Getting PHP 8.5 running as _wasm_ (checklist item B5, in `phasm`) is a
-different and much harder problem: the toolchain is pinned to a vendored `php8.3-src` tree, the
-VM-interrupt patch edits `Zend/zend_execute.c` on the VM hot path and may not apply, and on measured
-extrapolation an 8.5 build lands 22-79 KB OVER the 3 MB gzipped bundle ceiling. rom passing on 8.5 is
-not evidence for any of that.
+**Do not generalise it.** Getting PHP 8.5 running as _wasm_ was a separate and much harder problem,
+and it was solved in `phasm` rather than here: the worker now runs **8.5.2** as a raw `CompiledWasm`
+import, verified booting with the full extension list. The bundle argument that used to sit here is
+retired twice over - Cloudflare removed the compressed size limit on 2026-09-04, so the ceiling is
+64 MiB uncompressed on both plans, and the 8.5 build ships inside it. rom passing on 8.5 was never
+evidence for any of that; the wasm side had to be measured on its own.
 
 The floor is the real constraint here, not the ceiling: `drupal/core: ^11.2`, because
 `StatementBase`, `PrefetchedResult` and `FetchAs` do not exist before 11.2.0 (probed at four tags:

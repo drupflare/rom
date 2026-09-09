@@ -117,7 +117,7 @@ a deferred `Statement::rowCount()` for any write a later dirty read has already 
 dirty read replays the whole buffer, so it resolves every outstanding id and row count as a side
 effect. It does not remove the first resolution of a newly buffered statement, and it does not
 remove a dirty read, which must be evaluated inside a transaction with the buffer applied. The
-`N(N+1)` figure in [Cost](#-cost) for alternating write-then-read pairs is unchanged.
+triangular `N(N+1)/2` figure in [Cost](#-cost) for alternating write-then-read pairs is unchanged.
 
 A buffered write reports success before it runs, so a statement SQLite would refuse sits in the
 buffer until a later replay trips over it. Left there it is fatal twice over: every subsequent
@@ -547,16 +547,16 @@ on the MEMFS/PDO path. The cache ladder around it is 1 ms / 26 ms / 34 ms / 81 m
 
 |                                                 | value                        |
 | ----------------------------------------------- | ---------------------------- |
-| statements the host executed                    | **41,170**                   |
-| of which single-statement bridge calls          | **2,220**                    |
-| host transactions                               | **401**                      |
-| of which speculative (replayed and rolled back) | **394**                      |
-| statements executed inside those replays        | **37,814**                   |
+| statements the host executed                    | **39,031**                   |
+| of which single-statement bridge calls          | **2,234**                    |
+| host transactions                               | **389**                      |
+| of which speculative (replayed and rolled back) | **382**                      |
+| statements executed inside those replays        | **35,661**                   |
 | widest transaction                              | **380 statements**           |
 | errors Drupal raised and recovered from         | 18                           |
 | result                                          | 39 tables, 939 rows, HTTP200 |
 
-**92% of everything the engine executed was a replay**, 37,814 of 41,170. The node-save figure
+**91% of everything the engine executed was a replay**, 35,661 of 39,031. The node-save figure
 above (54 of 59) is the same ratio at a smaller scale; at 380 statements per transaction it is the
 whole cost. Hundreds of rows per transaction is where O(W\*R) first hurts.
 
@@ -573,10 +573,15 @@ The replay cache does not move that number. It removes repeated resolutions:
 a second `lastInsertId()` for the same buffered insert, a deferred `rowCount()` a dirty
 read has already replayed past. It cannot remove the _first_ resolution of a newly
 buffered statement, because the newest buffer index is by definition the one no earlier
-replay covered, and `Insert::execute()` asks for `lastInsertId()` immediately after
-buffering each row. So the alternating write-then-read pair stays at `N(N+1)`, the suite
-still asserts **12 for N=3**, and the installer's cost is unchanged until something reduces
-the number of resolutions rather than their repeat rate.
+replay covered.
+
+What did halve the cost is predicting the AUTOINCREMENT id. A write-then-read pair used to
+pay two speculative replays, one for the read and one to resolve the id, so N pairs re-sent
+`N(N+1)` statements. A predicted id makes a bare insert free, leaving only the read's replay
+of the buffer: N pairs re-send `1 + 2 + ... + N`, and the suite asserts **10 replayed
+statements over 4 speculative transactions at N=4**. The triangular term is inherent to
+answering a read against a buffer, so the installer's cost stands until something reduces the
+number of resolutions rather than their repeat rate.
 
 `CfwSqlClient` holds `$statementCount`, `$transactionCount`, `$speculativeCount` and
 `$replayedStatementCount`, surfaced on `Connection`. Each is asserted against `FakeHost`'s own
@@ -584,7 +589,7 @@ count of the same thing, since a counter asserted against itself proves nothing.
 figures are read directly off them.
 
 They are read outside the tests too:
-`worker/src/drupal/site-php.ts:1316` reads `statementCount()` into `$out['statementCount']`
+`worker/src/drupal/site-php.ts:1808` reads `statementCount()` into `$out['statementCount']`
 on the `/driver` route. The four counters live on the `CfwSqlClient`, so they are per-connection,
 and Drupal opens more than one connection across an install. `FakeHost`'s counters are
 process-wide, so the harness compares the two rather than assuming they match.
