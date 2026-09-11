@@ -1989,9 +1989,29 @@ class Connection extends SqliteDriverConnection
 	 */
 	private function speculate(TransactionBuffer $buffer, int $upTo, ?array $read = null): array
 	{
+		// A replay for an id or a row count is a question about ONE statement, and only a write
+		// to a table that statement touches can move the answer. Sending the others is the
+		// dominant write cost of this driver: a rolled-back row is billed the same as a committed
+		// one, so a save's later passes pay for its earlier statements again and again.
+		//
+		// A dirty READ is sent whole on purpose. Its tables are the caller's, not the buffer's,
+		// and replaying everything is what makes every outstanding id and row count free -- the
+		// only term that stops the O(writes x reads) growth.
+		$indexes = $read === null ? $buffer->dependencyIndexesUpTo($upTo) : null;
+
 		try {
-			$replay = $this->client()->runTransaction($buffer->statementsUpTo($upTo), false, $read);
+			$replay = $this->runReplay($buffer, $upTo, $indexes, $read);
 		} catch (SqlErrorException $e) {
+			if ($indexes !== null) {
+				// A narrowed replay must never be the REASON a statement fails. Anything the
+				// filter could have got wrong is a missing dependency, which the full pass has,
+				// so the full pass is the authority on whether this is a real error.
+				$indexes = null;
+				$replay = $this->runReplay($buffer, $upTo, null, $read);
+				$buffer->rememberResults($replay['results'], $upTo, null);
+
+				return $replay;
+			}
 			$rejected = $this->findRejectedStatement($buffer, $upTo, $read !== null);
 			if ($rejected === null) {
 				// nothing buffered is at fault, so the trailing read is
@@ -2004,9 +2024,39 @@ class Connection extends SqliteDriverConnection
 			throw new SqlErrorException($e->getSqlError(), $sql);
 		}
 
-		$buffer->rememberResults($replay['results'], $upTo);
+		$buffer->rememberResults($replay['results'], $upTo, $indexes);
 
 		return $replay;
+	}
+
+	/**
+	 * Sends one speculative pass to the host.
+	 *
+	 * @param TransactionBuffer $buffer
+	 *   The open buffer.
+	 * @param int $upTo
+	 *   The last buffer index to replay.
+	 * @param array<int, int>|null $indexes
+	 *   The narrowed index list, or NULL to send everything up to $upTo.
+	 * @param array{sql: string, params: array}|null $read
+	 *   (optional) A read to evaluate inside the same replay.
+	 *
+	 * @return array{results: array<int, array>, readResult: array|null}
+	 *   The host reply.
+	 *
+	 * @throws SqlErrorException
+	 *   If the host rejected the pass.
+	 */
+	private function runReplay(
+		TransactionBuffer $buffer,
+		int $upTo,
+		?array $indexes,
+		?array $read,
+	): array {
+		$statements =
+			$indexes === null ? $buffer->statementsUpTo($upTo) : $buffer->statementsAt($indexes);
+
+		return $this->client()->runTransaction($statements, false, $read);
 	}
 
 	/**

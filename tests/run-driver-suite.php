@@ -31,6 +31,7 @@ use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Schema;
 use Drupal\sqlite\Driver\Database\sqlite\Connection as CoreSqliteConnection;
 use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\SqlAnalyzer;
 use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\SqlErrorException;
+use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\TransactionBuffer;
 use Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\UncommittedStateException;
 
 require __DIR__ . '/fixtures/FakeHost.php';
@@ -1307,6 +1308,144 @@ ok(
 	'CONTROL: a read of the written table DOES add one, so the check above has teeth',
 	$withDirtyRead === $insertOnly + 1,
 	sprintf('%d with a dirty read, %d without', $withDirtyRead, $insertOnly),
+);
+// #endregion
+// #region the narrowed replay
+//
+// A replay opened for an id or a row count asks about ONE statement, and only a write to a table
+// that statement touches can move the answer. Everything else in the buffer is re-executed for
+// nothing -- and a rolled-back row is billed exactly like a committed one, so that is not a
+// theoretical cost. This is the dominant term in a Drupal entity save.
+//
+// The correctness argument is three properties of this deployment, and the direct assertions on
+// TransactionBuffer below pin each one: SQLite takes a rowid from the target table alone, this
+// schema declares no triggers, and foreign keys are off.
+echo "\nNarrowed replay\n";
+
+[$narrowHost, $narrowConnection] = connect();
+$narrowConnection->query('CREATE TABLE {narrowa} (id INTEGER PRIMARY KEY, v TEXT)');
+$narrowConnection->query('CREATE TABLE {narrowb} (id INTEGER PRIMARY KEY, v TEXT)');
+$narrowConnection
+	->insert('narrowa')
+	->fields(['id' => 1, 'v' => 'seed'])
+	->execute();
+
+$narrowBefore = [
+	'replayed' => $narrowConnection->replayedStatementCount(),
+	'speculative' => $narrowConnection->speculativeCount(),
+];
+
+$narrowTransaction = $narrowConnection->startTransaction();
+// eight writes to a table the question below does not touch
+for ($i = 1; $i <= 8; $i++) {
+	$narrowConnection
+		->insert('narrowb')
+		->fields(['id' => $i, 'v' => "b-$i"])
+		->execute();
+}
+// an UPDATE's row count cannot be arithmetic, so this is the replay
+$narrowRows = $narrowConnection
+	->update('narrowa')
+	->fields(['v' => 'moved'])
+	->condition('id', 1)
+	->execute();
+$narrowTransaction->commitOrRelease();
+unset($narrowTransaction);
+
+$narrowReplayed = $narrowConnection->replayedStatementCount() - $narrowBefore['replayed'];
+$narrowSpeculative = $narrowConnection->speculativeCount() - $narrowBefore['speculative'];
+
+ok('the narrowed replay still answers correctly', $narrowRows === 1, (string) $narrowRows);
+ok('it opens exactly one speculative pass', $narrowSpeculative === 1, (string) $narrowSpeculative);
+// the finding: 1 statement rather than 9. Without the filter the pass re-executes all eight
+// writes to the other table, and every one of them is a billed row
+ok(
+	'and that pass re-sends ONE statement rather than the whole buffer',
+	$narrowReplayed === 1,
+	sprintf('%d replayed', $narrowReplayed),
+);
+ok(
+	'the host agrees, so the saving is on the wire and not just in the counter',
+	$narrowHost->replayedStatements === $narrowReplayed,
+	sprintf('%d host, %d driver', $narrowHost->replayedStatements, $narrowReplayed),
+);
+// the committed state is the real check: a narrowed pass must not lose the statements it skipped
+$narrowConnection->query('DELETE FROM {narrowb} WHERE 0');
+ok(
+	'CONTROL: every skipped write still committed',
+	(int) $narrowConnection->query('SELECT COUNT(*) FROM {narrowb}')->fetchField() === 8,
+	(string) $narrowConnection->query('SELECT COUNT(*) FROM {narrowb}')->fetchField(),
+);
+
+// The closure itself, driven directly, because the end-to-end case above can only show one shape
+// and the dangerous cases are the ones it cannot reach.
+$buffer = new TransactionBuffer();
+$buffer->add('INSERT INTO a (v) VALUES (?)', ['x'], ['a']);
+$buffer->add('INSERT INTO b (v) VALUES (?)', ['y'], ['b']);
+$buffer->add('UPDATE a SET v = ?', ['z'], ['a']);
+ok(
+	'a target reaches only the writes to its own table',
+	$buffer->dependencyIndexesUpTo(2) === [0, 2],
+	json_encode($buffer->dependencyIndexesUpTo(2)),
+);
+
+// the transitive case: the target reads a table, so that table's writers come too
+$buffer = new TransactionBuffer();
+$buffer->add('INSERT INTO c (v) VALUES (?)', ['seed'], ['c']);
+$buffer->add('INSERT INTO d (v) VALUES (?)', ['noise'], ['d']);
+$buffer->add('INSERT INTO a (v) SELECT v FROM c', [], ['a']);
+ok(
+	'a write that READS another table pulls that table in',
+	$buffer->dependencyIndexesUpTo(2) === [0, 2],
+	json_encode($buffer->dependencyIndexesUpTo(2)),
+);
+
+// and one level further, which is what makes it a closure rather than an intersection
+$buffer = new TransactionBuffer();
+$buffer->add('INSERT INTO e (v) VALUES (?)', ['root'], ['e']);
+$buffer->add('INSERT INTO c (v) SELECT v FROM e', [], ['c']);
+$buffer->add('INSERT INTO d (v) VALUES (?)', ['noise'], ['d']);
+$buffer->add('INSERT INTO a (v) SELECT v FROM c', [], ['a']);
+ok(
+	'the closure is transitive rather than one hop',
+	$buffer->dependencyIndexesUpTo(3) === [0, 1, 3],
+	json_encode($buffer->dependencyIndexesUpTo(3)),
+);
+
+// an unnameable write could have touched anything, so nothing may be dropped
+$buffer = new TransactionBuffer();
+$buffer->add('INSERT INTO a (v) VALUES (?)', ['x'], ['a']);
+$buffer->add('VACUUM', [], [SqlAnalyzer::ALL_TABLES]);
+$buffer->add('UPDATE a SET v = ?', ['z'], ['a']);
+ok(
+	'an unnameable write refuses the whole narrowing',
+	$buffer->dependencyIndexesUpTo(2) === null,
+	json_encode($buffer->dependencyIndexesUpTo(2)),
+);
+
+// DDL for the target's table has to survive, or the replay runs against a table that does not exist
+$buffer = new TransactionBuffer();
+$buffer->add(
+	'CREATE TABLE a (id INTEGER PRIMARY KEY, v TEXT)',
+	[],
+	['a', SqlAnalyzer::SCHEMA_TABLE],
+);
+$buffer->add('INSERT INTO b (v) VALUES (?)', ['y'], ['b']);
+$buffer->add('INSERT INTO a (v) VALUES (?)', ['x'], ['a']);
+ok(
+	'the schema statement for the target table is kept',
+	$buffer->dependencyIndexesUpTo(2) === [0, 2],
+	json_encode($buffer->dependencyIndexesUpTo(2)),
+);
+
+// CONTROL: a buffer with nothing to drop says so, rather than costing a second pass to find out
+$buffer = new TransactionBuffer();
+$buffer->add('INSERT INTO a (v) VALUES (?)', ['x'], ['a']);
+$buffer->add('UPDATE a SET v = ?', ['z'], ['a']);
+ok(
+	'CONTROL: a buffer that cannot be narrowed returns NULL rather than the same list',
+	$buffer->dependencyIndexesUpTo(1) === null,
+	json_encode($buffer->dependencyIndexesUpTo(1)),
 );
 // #endregion
 // #region the replay cache

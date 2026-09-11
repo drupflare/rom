@@ -66,6 +66,16 @@ final class TransactionBuffer
 	private array $resolved = [];
 
 	/**
+	 * Tables each buffered statement READS, keyed by buffer index.
+	 *
+	 * Populated on demand: only a replay that narrows itself asks, and a transaction that
+	 * never needs an unpredictable id never pays the parse.
+	 *
+	 * @var array<int, string[]>
+	 */
+	private array $readTables = [];
+
+	/**
 	 * What the buffered inserts imply about the rowids they will be given.
 	 *
 	 * Maintained as statements arrive rather than derived on demand, so answering costs nothing
@@ -273,7 +283,7 @@ final class TransactionBuffer
 	 */
 	public function statements(): array
 	{
-		return $this->slice($this->lastIndex());
+		return $this->slice($this->liveIndexesUpTo($this->lastIndex()));
 	}
 
 	/**
@@ -299,7 +309,131 @@ final class TransactionBuffer
 	 */
 	public function statementsUpTo(int $index): array
 	{
-		return $this->slice($index);
+		return $this->slice($this->liveIndexesUpTo($index));
+	}
+
+	/**
+	 * Returns a chosen subset of buffered statements, in issue order.
+	 *
+	 * @param array<int, int> $indexes
+	 *   Buffer indexes, ascending, as dependencyIndexesUpTo() returns them.
+	 *
+	 * @return array<int, array{sql: string, params: array}>
+	 *   The statements, in issue order.
+	 */
+	public function statementsAt(array $indexes): array
+	{
+		return $this->slice($indexes);
+	}
+
+	/**
+	 * Returns the buffer indexes a replay needs in order to answer for one statement.
+	 *
+	 * A speculative replay exists to learn one of two things about one statement: the rowid an
+	 * insert would be given, or how many rows a write would change. Replaying the statements that
+	 * cannot move either answer is the whole of this project's write cost - a rolled-back row is
+	 * billed identically to a committed one, so the ninth pass of a node save pays for every
+	 * statement of the first eight a second time.
+	 *
+	 * Only a write to a table the target touches can change the target's answer, and three
+	 * properties of this deployment are what make that true rather than merely plausible:
+	 * SQLite takes a rowid from the target table alone, Drupal's SQLite schema declares no
+	 * triggers, and foreign keys are off - so no write to another table reaches this one.
+	 *
+	 * The set is a transitive closure rather than a single intersection, because a write may read
+	 * another table (`INSERT INTO a SELECT ... FROM b`) and so inherit that table's writers. It
+	 * grows until nothing new joins it.
+	 *
+	 * NULL means the replay cannot be narrowed and the caller must send everything. That is the
+	 * answer whenever a table cannot be named (SqlAnalyzer::ALL_TABLES), and also whenever the
+	 * subset would be the whole list anyway, so a caller never pays a second pass to learn it
+	 * saved nothing.
+	 *
+	 * @param int $index
+	 *   The buffer index the replay is being opened for.
+	 *
+	 * @return array<int, int>|null
+	 *   The buffer indexes to send, ascending and including $index, or NULL to send everything.
+	 */
+	public function dependencyIndexesUpTo(int $index): ?array
+	{
+		if (
+			$index < 0 ||
+			!isset($this->statements[$index]) ||
+			$this->statements[$index]['failed']
+		) {
+			return null;
+		}
+
+		$live = $this->liveIndexesUpTo($index);
+		if (count($live) < 2) {
+			return null;
+		}
+
+		$wanted = [];
+		$seed = array_merge($this->statements[$index]['tables'], $this->readsOf($index));
+		foreach ($seed as $table) {
+			if ($table === SqlAnalyzer::ALL_TABLES) {
+				return null;
+			}
+			$wanted[$table] = true;
+		}
+		if ($wanted === []) {
+			return null;
+		}
+
+		$chosen = [$index => true];
+		do {
+			$grew = false;
+			foreach ($live as $i) {
+				if (isset($chosen[$i])) {
+					continue;
+				}
+				$writes = $this->statements[$i]['tables'];
+				$relevant = false;
+				foreach ($writes as $table) {
+					if ($table === SqlAnalyzer::ALL_TABLES) {
+						// an untargetable write could have touched the table being asked about
+						return null;
+					}
+					$relevant = $relevant || isset($wanted[$table]);
+				}
+				if (!$relevant) {
+					continue;
+				}
+				$chosen[$i] = true;
+				$grew = true;
+				foreach ($this->readsOf($i) as $table) {
+					if (!isset($wanted[$table])) {
+						$wanted[$table] = true;
+					}
+				}
+			}
+		} while ($grew);
+
+		if (count($chosen) === count($live)) {
+			return null;
+		}
+
+		ksort($chosen);
+
+		return array_keys($chosen);
+	}
+
+	/**
+	 * Returns the tables one buffered statement reads, memoized.
+	 *
+	 * @param int $index
+	 *   The buffer index.
+	 *
+	 * @return string[]
+	 *   Lower-cased table names.
+	 */
+	private function readsOf(int $index): array
+	{
+		return $this->readTables[$index] ??= SqlAnalyzer::readTables(
+			$this->statements[$index]['sql'],
+		);
 	}
 
 	/**
@@ -317,10 +451,16 @@ final class TransactionBuffer
 	 *   trusted.
 	 * @param int|null $upTo
 	 *   The buffer index the replay ran to, or NULL when it ran the whole buffer.
+	 * @param array<int, int>|null $indexes
+	 *   The buffer indexes the replay actually sent, when it sent a narrowed subset. Every
+	 *   statement in a narrowed replay saw every write that could affect it -- that is what
+	 *   dependencyIndexesUpTo() computes -- so their results are as authoritative as a full
+	 *   pass's and are kept on the same terms.
 	 */
-	public function rememberResults(array $results, ?int $upTo = null): void
+	public function rememberResults(array $results, ?int $upTo = null, ?array $indexes = null): void
 	{
-		$indexes = $this->liveIndexesUpTo($upTo ?? $this->lastIndex());
+		$indexes ??= $this->liveIndexesUpTo($upTo ?? $this->lastIndex());
+		$indexes = array_values($indexes);
 		foreach ($results as $position => $result) {
 			if (!isset($indexes[$position])) {
 				continue;
@@ -481,18 +621,21 @@ final class TransactionBuffer
 	}
 
 	/**
-	 * Returns the buffered statements up to an index, without bookkeeping.
+	 * Returns the named buffered statements, without bookkeeping.
 	 *
-	 * @param int $index
-	 *   The last index to include; a negative value yields an empty list.
+	 * @param array<int, int> $indexes
+	 *   Buffer indexes, ascending. A discarded or unknown one is dropped.
 	 *
 	 * @return array<int, array{sql: string, params: array, minted?: string}>
 	 *   The statements.
 	 */
-	private function slice(int $index): array
+	private function slice(array $indexes): array
 	{
 		$out = [];
-		foreach ($this->liveIndexesUpTo($index) as $i) {
+		foreach ($indexes as $i) {
+			if (!isset($this->statements[$i]) || $this->statements[$i]['failed']) {
+				continue;
+			}
 			$entry = [
 				'sql' => $this->statements[$i]['sql'],
 				'params' => $this->statements[$i]['params'],
