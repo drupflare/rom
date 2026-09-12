@@ -2006,11 +2006,30 @@ class Connection extends SqliteDriverConnection
 				// A narrowed replay must never be the REASON a statement fails. Anything the
 				// filter could have got wrong is a missing dependency, which the full pass has,
 				// so the full pass is the authority on whether this is a real error.
+				//
+				// AND IT IS ONLY THE AUTHORITY WHEN IT SUCCEEDS. This returned unconditionally,
+				// so a statement that genuinely fails -- a duplicate key Drupal expects and
+				// recovers from -- never reached findRejectedStatement() and was never marked
+				// failed. The buffer kept it live, Drupal's transaction manager and this one
+				// disagreed about the stack, and an install died with
+				// TransactionOutOfOrderException. Measured against pristine Drupal 11.4.5:
+				// 13 of 14 installer assertions failed with the narrowing on and 0 with it off,
+				// while the worker's PATCHED tree passed either way, which is why the gate here
+				// stayed green.
 				$indexes = null;
-				$replay = $this->runReplay($buffer, $upTo, null, $read);
-				$buffer->rememberResults($replay['results'], $upTo, null);
+				try {
+					$replay = $this->runReplay($buffer, $upTo, null, $read);
+				} catch (SqlErrorException $full) {
+					// the full pass failed too, so the statement is genuinely at fault and the
+					// error below is the one to attribute -- fall through to the bisection
+					$e = $full;
+					$replay = null;
+				}
+				if ($replay !== null) {
+					$buffer->rememberResults($replay['results'], $upTo, null);
 
-				return $replay;
+					return $replay;
+				}
 			}
 			$rejected = $this->findRejectedStatement($buffer, $upTo, $read !== null);
 			if ($rejected === null) {

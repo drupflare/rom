@@ -1325,6 +1325,7 @@ echo "\nNarrowed replay\n";
 [$narrowHost, $narrowConnection] = connect();
 $narrowConnection->query('CREATE TABLE {narrowa} (id INTEGER PRIMARY KEY, v TEXT)');
 $narrowConnection->query('CREATE TABLE {narrowb} (id INTEGER PRIMARY KEY, v TEXT)');
+$narrowConnection->query('CREATE TABLE {narrowc} (id INTEGER PRIMARY KEY, v TEXT)');
 $narrowConnection
 	->insert('narrowa')
 	->fields(['id' => 1, 'v' => 'seed'])
@@ -1369,6 +1370,19 @@ ok(
 	$narrowHost->replayedStatements === $narrowReplayed,
 	sprintf('%d host, %d driver', $narrowHost->replayedStatements, $narrowReplayed),
 );
+
+// The case this region CANNOT reach: a statement that genuinely fails inside a narrowed replay.
+// The narrowed pass falls back to a full one, and that fallback returned unconditionally -- so a
+// real error never reached findRejectedStatement(), was never marked failed, and left Drupal's
+// transaction manager and this one disagreeing about the stack.
+//
+// `tests/run-installer.php` against PRISTINE Drupal is the guard, and it is a falsified one:
+// 13 of 14 assertions fail with the fallback reverted and 0 with it in place. Three attempts at a
+// synthetic version here all passed for the wrong reason -- a missing table cannot be named, so the
+// buffer is unnarrowable and the fallback never runs; a constraint violation surfaces at commit
+// rather than at execute(); and catching it leaves the stack dirty enough to trip core's own
+// destructor assert. A test that passes with the fix reverted is worse than no test.
+//
 // the committed state is the real check: a narrowed pass must not lose the statements it skipped
 $narrowConnection->query('DELETE FROM {narrowb} WHERE 0');
 ok(
