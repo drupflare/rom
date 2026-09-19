@@ -234,9 +234,7 @@ class Connection extends SqliteDriverConnection
 
 		$lane = (int) ($connection_options['lane'] ?? 0);
 		$lanes = (int) ($connection_options['lanes'] ?? 0);
-		// lane 0 is the primary and an unset count is a site with no pool; either way the
-		// unpartitioned arithmetic below is the one that was always there
-		if ($lane >= 1 && $lanes >= 1) {
+		if ($lane >= 0 && $lanes >= 1) {
 			$this->idStride = $lanes + 1;
 			$this->idOffset = $lane % $this->idStride;
 		}
