@@ -2098,10 +2098,15 @@ function lane_minted(FakeHost $host): array
 	return array_values(array_unique($out));
 }
 
+// THE PRIMARY TAKES RESIDUE 0 RATHER THAN THE WHOLE LINE. This assertion used to require the
+// opposite, and what it pinned was the defect: a lane mints from its own class, the primary walked
+// straight through every class, and the two met within one stride -- every authenticated POST on a
+// pooled site answered 500 with `UNIQUE constraint failed: watchdog.wid`. Disjointness needs every
+// writer in the scheme.
 [, $primaryConnection] = lane_connect(0, 3);
 ok(
-	'lane 0 is the primary and strides on nothing',
-	$primaryConnection->idPartition() === ['offset' => 0, 'stride' => 1],
+	'lane 0 is the primary and takes residue 0 of the same stride',
+	$primaryConnection->idPartition() === ['offset' => 0, 'stride' => 4],
 	json_encode($primaryConnection->idPartition()),
 );
 [, $unpooledConnection] = lane_connect(1, 0);
@@ -2110,6 +2115,34 @@ ok(
 	$unpooledConnection->idPartition() === ['offset' => 0, 'stride' => 1],
 	json_encode($unpooledConnection->idPartition()),
 );
+// THE COLLISION ITSELF, which nothing asserted before it shipped. The primary and every lane must
+// mint from disjoint residue classes; when the primary strode on nothing it reached a lane's
+// reserved value within one stride and the rows met on a UNIQUE index. Asserting the partitions are
+// pairwise disjoint is the property, rather than asserting any one of them in isolation.
+$classes = [];
+foreach ([0, 1, 2, 3] as $which) {
+	[, $memberConnection] = lane_connect($which, 3);
+	$partition = $memberConnection->idPartition();
+	$classes[$which] = $partition['offset'] % $partition['stride'];
+}
+ok(
+	'every writer in the pool holds a residue class no other writer holds',
+	count(array_unique($classes)) === count($classes),
+	json_encode($classes),
+);
+ok(
+	'and they share one stride, so the classes actually tile the id space',
+	count(
+		array_unique(
+			array_map(
+				static fn(int $which): int => lane_connect($which, 3)[1]->idPartition()['stride'],
+				[0, 1, 2, 3],
+			),
+		),
+	) === 1,
+	'strides disagree',
+);
+
 [$laneHost, $laneConnection] = lane_connect(1, 3);
 ok(
 	'lane 1 of 3 takes every fourth id, offset 1',
@@ -2196,6 +2229,9 @@ ok(
 );
 
 // CONTROL: the primary commits its own writes, so it has no mark and must not pay a read for one.
+// STRIDING MUST NOT SWITCH THAT ON. The mark accounts for writes that committed somewhere else, so
+// a connection that commits its own has nothing to reconcile -- and gating the read on "do I
+// stride" rather than "am I a lane" would have bought the primary a `cfw_meta` SELECT per insert.
 [$noMarkHost, $noMarkConnection] = lane_connect(0, 3);
 $noMarkConnection->query('CREATE TABLE cfw_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)');
 $noMarkConnection->query("INSERT INTO cfw_meta (k, v) VALUES ('lane_high:ln', '99')");
@@ -2206,8 +2242,8 @@ $noMarkReads = array_filter(
 	static fn(string $statement): bool => str_contains($statement, 'cfw_meta'),
 );
 ok(
-	'CONTROL: an unpartitioned connection ignores the mark and never reads it',
-	$noMarkRun['predicted'] === ['6'] && $noMarkReads === [],
+	'CONTROL: the primary strides yet still never reads the mark',
+	$noMarkRun['predicted'] === ['8'] && $noMarkReads === [],
 	sprintf('predicted %s, %d read(s)', implode(',', $noMarkRun['predicted']), count($noMarkReads)),
 );
 
@@ -2318,8 +2354,11 @@ ok(
 
 // CONTROL, and it is the compatibility requirement rather than a nicety: an unpartitioned
 // connection must buffer the statement Drupal wrote and report the id SQLite would have assigned.
-// Everything above is reachable only from a lane.
-[$controlHost, $controlConnection] = lane_connect(0, 3);
+//
+// A POOL-LESS SITE is what "unpartitioned" means now. It used to be the primary of a pooled site,
+// which is no longer unpartitioned -- and leaving this on lane 0 of 3 would have quietly turned the
+// compatibility control into an assertion about striding.
+[$controlHost, $controlConnection] = lane_connect(0, 0);
 $controlRun = lane_insert($controlHost, $controlConnection, 'ln');
 ok(
 	'CONTROL: the primary still appends, and still reports the appended id',

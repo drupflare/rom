@@ -109,6 +109,14 @@ class Connection extends SqliteDriverConnection
 	private int $idOffset = 0;
 
 	/**
+	 * Whether this connection forwards its writes, rather than committing them.
+	 *
+	 * Distinct from {@link $idStride} being above 1: the primary of a pooled site strides so its ids
+	 * stay disjoint from its lanes, and still commits directly.
+	 */
+	private bool $isLane = false;
+
+	/**
 	 * Highest rowid this lane minted and forwarded per table, for the life of one buffer.
 	 *
 	 * @var array<string, int>
@@ -238,6 +246,7 @@ class Connection extends SqliteDriverConnection
 			$this->idStride = $lanes + 1;
 			$this->idOffset = $lane % $this->idStride;
 		}
+		$this->isLane = $lane >= 1 && $lanes >= 1;
 
 		// the core sqlite constructor types its client as \PDO and turns a prefix into an
 		// ATTACHed database, so the base constructor is invoked directly; its own
@@ -1756,7 +1765,9 @@ class Connection extends SqliteDriverConnection
 	 */
 	private function laneHighWater(string $table): int
 	{
-		if ($this->idStride < 2) {
+		// the mark accounts for writes that committed SOMEWHERE ELSE; a connection that commits its
+		// own has nothing to reconcile and must not pay the read
+		if (!$this->isLane) {
 			return 0;
 		}
 		if (isset($this->laneHigh[$table])) {
