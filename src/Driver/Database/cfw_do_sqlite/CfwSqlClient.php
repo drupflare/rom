@@ -45,6 +45,28 @@ final class CfwSqlClient
 	public const TRANSACTION_BRIDGE = 'cfwSqlTxn';
 
 	/**
+	 * Module key under which the host says statements go to an EXTERNAL database.
+	 *
+	 * Optional and false on every managed deployment. When it is true the host has selected a
+	 * backend it reaches asynchronously -- Hyperdrive today -- and the synchronous bridge cannot
+	 * answer one, because `cfwSqlExec` returns a string and an external query is a promise. The
+	 * statement yields instead: the PHP call is frozen, the Worker runs the query, and the chain
+	 * resumes inside the same invocation.
+	 *
+	 * @see CfwSqlClient::PARK_SCHEME
+	 */
+	public const PARK_BRIDGE = 'cfwSqlPark';
+
+	/**
+	 * The target a yielded statement is encoded into.
+	 *
+	 * Must match `PARK_SQL_SCHEME` in `park-drive.ts`. A scheme rather than a new trap, for the
+	 * reason the fetch one has: `ext/cfwpark` already traps `stream_socket_client`, so both ride it
+	 * and neither needs the extension rebuilt.
+	 */
+	public const PARK_SCHEME = 'cfwpark+sql://';
+
+	/**
 	 * The host's single-statement function, as surfaced by vrzno.
 	 */
 	private mixed $execFunction;
@@ -53,6 +75,27 @@ final class CfwSqlClient
 	 * The host's transaction function, or NULL when the host has none.
 	 */
 	private mixed $transactionFunction;
+
+	/**
+	 * Whether this connection yields its statements to the host instead of calling the bridge.
+	 *
+	 * Resolved once, in the constructor, because it is a property of the DEPLOYMENT rather than of
+	 * a statement: a site does not change database backend between two queries, and asking the
+	 * Module per statement would put a host crossing on the hottest path in the driver.
+	 */
+	private bool $parked = false;
+
+	/**
+	 * The yield, injectable so the suite can drive both outcomes without a Worker.
+	 *
+	 * NULL is the real one. It has to be a dynamic call to `stream_socket_client`, which means a
+	 * plain-PHP test cannot intercept it by any namespace trick -- the dynamic form always resolves
+	 * to the global function, and that is exactly the property the park needs, because a direct call
+	 * compiles to an internal frame the extension declines to suspend under.
+	 *
+	 * @var callable|null
+	 */
+	private $parkOpener = null;
 
 	/**
 	 * The rowid of the last committed insert, as a decimal string.
@@ -94,12 +137,22 @@ final class CfwSqlClient
 	 *   Module when omitted; injectable so the class can be driven from a test.
 	 * @param mixed $transactionFunction
 	 *   (optional) The host's transaction function.
+	 * @param bool|null $parked
+	 *   (optional) Whether this connection yields its statements to the host instead of calling the bridge.
+	 *   Resolved from the PHP Module when omitted; injectable so the class can be driven from a test.
+	 * @param callable|null $parkOpener
+	 *   (optional) The yield, injectable so the suite can drive both outcomes without a Worker.
+	 *   NULL is the real one, which must be a dynamic call to `stream_socket_client`.
 	 *
 	 * @throws HostBridgeException
 	 *   If the bridge or the codec helpers are absent.
 	 */
-	public function __construct(mixed $execFunction = null, mixed $transactionFunction = null)
-	{
+	public function __construct(
+		mixed $execFunction = null,
+		mixed $transactionFunction = null,
+		?bool $parked = null,
+		?callable $parkOpener = null,
+	) {
 		$this->execFunction = $execFunction ?? self::fromModule(self::EXEC_BRIDGE);
 		$this->transactionFunction =
 			$transactionFunction ?? self::fromModule(self::TRANSACTION_BRIDGE);
@@ -112,6 +165,15 @@ final class CfwSqlClient
 				),
 			);
 		}
+		// BOTH HALVES, the same pair `ParkFetchHandler::available()` checks and for the same reason:
+		// the host flag says a backend was selected, `cfw_park_run` says this interpreter can
+		// suspend a call at all, and yielding on the first alone hands a `cfwpark+sql://` target to
+		// the real stream_socket_client -- which is a hang rather than a degradation
+		$this->parkOpener = $parkOpener;
+		$this->parked =
+			$parked ??
+			function_exists('cfw_park_run') && self::fromModule(self::PARK_BRIDGE) === true;
+
 		if (!function_exists('pw_encode') || !function_exists('pw_decode')) {
 			throw new HostBridgeException(
 				'The pw_encode()/pw_decode() codec helpers are not defined. Without them a 64-bit SQLite integer silently wraps in 32-bit PHP, so the driver refuses to run rather than corrupt IDs and timestamps.',
@@ -138,14 +200,16 @@ final class CfwSqlClient
 	 */
 	public function exec(string $sql, array $params = []): array
 	{
-		$reply = $this->call(
-			$this->execFunction,
-			[
-				'sql' => $sql,
-				'params' => $params,
-			],
-			$sql,
-		);
+		$reply = $this->parked
+			? $this->yieldExec($sql, $params)
+			: $this->call(
+				$this->execFunction,
+				[
+					'sql' => $sql,
+					'params' => $params,
+				],
+				$sql,
+			);
 
 		$result = $this->normalizeResult($reply, $sql);
 		$this->lastInsertId = $result['lastInsertId'];
@@ -484,6 +548,61 @@ final class CfwSqlClient
 			return isset($value['__phpint']) ? (int) $value['__phpint'] : 0;
 		}
 		return is_scalar($value) ? (int) $value : 0;
+	}
+
+	/**
+	 * Runs one statement by suspending this call until the Worker has the answer.
+	 *
+	 * The yield is a userland call to `stream_socket_client`, which `ext/cfwpark` traps: the
+	 * continuation is frozen, the host decodes the target, runs the query and resumes the chain
+	 * with the reply. `ParkFetchHandler` in the drupflare module does the same thing for HTTP, and
+	 * the two share the trap rather than each needing one.
+	 *
+	 * **A REFUSED YIELD IS AN ERROR HERE, and that is the one place this differs from the fetch
+	 * transport.** A refused fetch falls back to the deferred one; there is no local copy of an
+	 * external database to fall back to, so a refusal has to reach Drupal as a database error
+	 * rather than as a silent second path that answers from the wrong store.
+	 *
+	 * @param string $sql
+	 *   The statement.
+	 * @param array $params
+	 *   Its parameters.
+	 *
+	 * @return array
+	 *   The host reply, in the same shape the synchronous bridge answers in.
+	 *
+	 * @throws HostBridgeException
+	 *   If the park was refused or the reply was not readable.
+	 * @throws SqlErrorException
+	 *   If the database rejected the statement.
+	 */
+	private function yieldExec(string $sql, array $params): array
+	{
+		$json = json_encode(['sql' => $sql, 'params' => $params]);
+		if ($json === false) {
+			throw new HostBridgeException('the statement could not be encoded for the park');
+		}
+
+		// through a variable, so the compiler emits a dynamic call: a direct one is an internal
+		// frame the park declines to suspend under
+		$open = $this->parkOpener ?? 'stream_socket_client';
+		$raw = @$open(self::PARK_SCHEME . base64_encode($json));
+		if (!is_string($raw)) {
+			throw new HostBridgeException(
+				'the host refused to run this statement against the external database; there is no local copy to answer it from',
+			);
+		}
+
+		$reply = json_decode($raw, true);
+		if (!is_array($reply)) {
+			throw new HostBridgeException('the park answer was not JSON');
+		}
+		if (isset($reply['error']) && $reply['error'] !== '') {
+			throw new SqlErrorException((string) $reply['error'], $sql);
+		}
+		$result = $reply['result'] ?? null;
+
+		return is_array($result) ? $result : [];
 	}
 
 	/**

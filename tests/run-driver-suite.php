@@ -2926,6 +2926,90 @@ try {
 }
 ok('CONTROL: a value AT the cap is accepted', !$underThrew);
 // #endregion
+// #region the external backend, reached by yielding rather than by the bridge
+echo "\n# the parked statement, for a site whose database is not the object's own\n";
+
+$parkTargets = [];
+$parkReply = static function (array $reply) use (&$parkTargets): callable {
+	return static function (string $target) use ($reply, &$parkTargets): string {
+		$parkTargets[] = $target;
+		return json_encode($reply);
+	};
+};
+
+// THE CONTROL FIRST: with no flag and no opener the client calls the bridge, which is every
+// managed deployment and has to be untouched by any of this
+$plainHost = new FakeHost();
+$plainClient = new CfwSqlClient($plainHost->execBridge(), $plainHost->txnBridge());
+$plainClient->exec('SELECT 1');
+ok('a connection that was not told to park still calls the bridge', $plainHost->execCalls === 1);
+
+$parkedHost = new FakeHost();
+$parked = new CfwSqlClient(
+	$parkedHost->execBridge(),
+	$parkedHost->txnBridge(),
+	true,
+	$parkReply([
+		'error' => '',
+		'result' => [
+			'rows' => [['nid' => '7']],
+			'rowsRead' => 1,
+			'rowsWritten' => 0,
+			'changes' => 0,
+			'lastInsertId' => '0',
+		],
+	]),
+);
+$out = $parked->exec('SELECT nid FROM node WHERE nid = ?', [7]);
+ok('a parked statement never reaches the bridge', $parkedHost->execCalls === 0);
+ok('and its rows come back', ($out['rows'][0]['nid'] ?? null) === '7');
+ok(
+	'the target carries the agreed scheme',
+	str_starts_with($parkTargets[0] ?? '', CfwSqlClient::PARK_SCHEME),
+);
+$descriptor = json_decode(
+	base64_decode(substr($parkTargets[0] ?? '', strlen(CfwSqlClient::PARK_SCHEME))),
+	true,
+);
+ok(
+	'the statement crosses verbatim',
+	($descriptor['sql'] ?? '') === 'SELECT nid FROM node WHERE nid = ?',
+);
+ok('and so do its parameters', ($descriptor['params'] ?? []) === [7]);
+
+// A DATABASE ERROR IS A DATABASE ERROR, so Drupal's own handler sees what it expects
+$errored = new CfwSqlClient(
+	$parkedHost->execBridge(),
+	$parkedHost->txnBridge(),
+	true,
+	$parkReply(['error' => 'relation "node" does not exist', 'result' => null]),
+);
+$threw = null;
+try {
+	$errored->exec('SELECT 1');
+} catch (Throwable $e) {
+	$threw = $e;
+}
+ok('an error from the database raises SqlErrorException', $threw instanceof SqlErrorException);
+
+// A REFUSED YIELD CANNOT DEGRADE: there is no local copy to answer from, so it must not fall
+// through to the bridge and answer from the wrong database
+$refusedHost = new FakeHost();
+$refused = new CfwSqlClient(
+	$refusedHost->execBridge(),
+	$refusedHost->txnBridge(),
+	true,
+	static fn(string $target): bool => false,
+);
+$refusalThrew = null;
+try {
+	$refused->exec('SELECT 1');
+} catch (Throwable $e) {
+	$refusalThrew = $e;
+}
+ok('a refused park raises rather than answering', $refusalThrew instanceof HostBridgeException);
+ok('and it did NOT fall through to the local bridge', $refusedHost->execCalls === 0);
+// #endregion
 echo "\nhost calls: {$host->execCalls} single, {$host->txnCalls} transactional ({$host->speculativeCalls} rolled back over {$host->replayedStatements} replayed statements)\n";
 echo "\n$pass passed, $fail failed\n";
 exit($fail === 0 ? 0 : 1);
