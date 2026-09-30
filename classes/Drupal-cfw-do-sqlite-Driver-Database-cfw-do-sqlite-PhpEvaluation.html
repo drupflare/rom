@@ -82,64 +82,64 @@
 								<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle " data-toggle="collapse" data-target="#namespace-1255912081"></a>
+									<a class="accordion-toggle " data-toggle="collapse" data-target="#namespace-333523230"></a>
 								<a href="namespaces/default.html" style="margin-left: 30px; padding-left: 0">\</a>
 			</div>
-			<div id="namespace-1255912081" class="accordion-body collapse in">
+			<div id="namespace-333523230" class="accordion-body collapse in">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-185960695"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-559675326"></a>
 								<a href="namespaces/drupal.html" style="margin-left: 30px; padding-left: 0">Drupal</a>
 			</div>
-			<div id="namespace-185960695" class="accordion-body collapse ">
+			<div id="namespace-559675326" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1498197848"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-384845661"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
 			</div>
-			<div id="namespace-1498197848" class="accordion-body collapse ">
+			<div id="namespace-384845661" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-40726979"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-533611433"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver.html" style="margin-left: 30px; padding-left: 0">Driver</a>
 			</div>
-			<div id="namespace-40726979" class="accordion-body collapse ">
+			<div id="namespace-533611433" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1294638983"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-819186055"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database.html" style="margin-left: 30px; padding-left: 0">Database</a>
 			</div>
-			<div id="namespace-1294638983" class="accordion-body collapse ">
+			<div id="namespace-819186055" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1080483799"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-602022673"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
 			</div>
-			<div id="namespace-1080483799" class="accordion-body collapse ">
+			<div id="namespace-602022673" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1263344274"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-2126662761"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite-install.html" style="margin-left: 30px; padding-left: 0">Install</a>
 			</div>
-			<div id="namespace-1263344274" class="accordion-body collapse ">
+			<div id="namespace-2126662761" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 					
@@ -229,28 +229,25 @@
 					
 					<h1>
 						<small>\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite</small>
-						RowidPlan</h1>
+						PhpEvaluation</h1>
 					<p>
-						<em>Predicts the rowid a buffered insert will be given, without running anything.</em>
+						<em>Evaluates in PHP the SQL functions ctx.storage.sql cannot run.</em>
 					</p>
-					<p>SQLite assigns an ordinary rowid table <code class="prettyprint">max(rowid) + 1</code>, so the answer is arithmetic on state
-the driver already holds: the committed maximum, plus the inserts buffered since. This class
-holds the second half -- what the buffer implies -- and <code class="prettyprint">Connection</code> supplies the first.</p>
-<p>It refuses far more than it answers, and every refusal falls back to the replay that was
-always there, so a case this cannot read is slow rather than wrong:</p>
+					<p>Drupal's own SQLite driver supplies REGEXP, MD5() and SUBSTRING_INDEX() through
+PDO::sqliteCreateFunction(), and ctx.storage.sql has no user-defined functions. So the
+statement is rewritten into one the engine can answer and the rest is done on the rows:</p>
 <ul>
-<li>anything but <code class="prettyprint">INSERT INTO t (cols) VALUES (...)</code> with one tuple and no nested parentheses:
-<code class="prettyprint">ON CONFLICT</code>, <code class="prettyprint">OR REPLACE</code>, <code class="prettyprint">INSERT ... SELECT</code> and <code class="prettyprint">DEFAULT VALUES</code> can all write a row
-that is not a fresh append.</li>
-<li>any other write to that table, except a <code class="prettyprint">DELETE FROM t</code> with no <code class="prettyprint">WHERE</code>, which empties it
-and is the shape the router rebuild opens with.</li>
-<li>a statement whose target could not be named at all, which blocks every table at once.</li>
+<li><code class="prettyprint">col [NOT] REGEXP :p</code> in a SELECT, as a top-level AND condition: the condition becomes <code class="prettyprint">1</code>,
+the column is added under a private alias, and the rows are kept where core's own
+<code class="prettyprint">preg_match('#p#i')</code> agrees. LIMIT/OFFSET, DISTINCT and a <code class="prettyprint">SELECT COUNT(*) FROM (...)</code>
+pager wrapper are applied after the filter, because applying them to the superset would
+answer wrong.</li>
+<li><code class="prettyprint">MD5(col) AS a</code> and <code class="prettyprint">SUBSTRING_INDEX(col, d, n) AS a</code> in the top-level select list: the
+column is fetched and the function applied to the value.</li>
 </ul>
-<p>The AUTOINCREMENT case is refused in <code class="prettyprint">Connection</code>, where the schema is readable: its next id
-comes from <code class="prettyprint">sqlite_sequence</code> rather than from the table, and those are the tables whose id a
-caller actually uses.</p>
+<p>Everything else that names one of these is left for the engine, which refuses it by name.</p>
 
-																																											<section id="summary">
+																																<section id="summary">
 						<h2>Summary</h2>
 						<section class="row-fluid heading">
 							<section class="span4">
@@ -265,19 +262,13 @@ caller actually uses.</p>
 						</section>
 						<section class="row-fluid public">
 							<section class="span4">
-																																																																																																																																																																																																																																																																																																																																																																																																							
-																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_record" class="">record</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_reset" class="">reset</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_entry" class="">entry</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_refusalFor" class="">refusalFor</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_isSingleRowInsert" class="">isSingleRowInsert</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_suppliedMaxFor" class="">suppliedMaxFor</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_withSuppliedRowid" class="">withSuppliedRowid</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_suppliedRowid" class="">suppliedRowid</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_suppliesRowid" class="">suppliesRowid</a><br/>
+																																																																																																																																																																																																																																																																																					
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#method_plan" class="">plan</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#method_apply" class="">apply</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#method_substringIndex" class="">substringIndex</a><br/>
 																								</section>
 							<section class="span4">
-																																																																																																																						
+																
 																	<em>No public properties found</em>
 															</section>
 							<section class="span4">
@@ -291,7 +282,7 @@ caller actually uses.</p>
 																	<em>No protected methods found</em>
 															</section>
 							<section class="span4">
-																																																																																																																						
+																
 																	<em>No protected properties found</em>
 															</section>
 							<section class="span4">
@@ -301,24 +292,25 @@ caller actually uses.</p>
 						</section>
 						<section class="row-fluid private">
 							<section class="span4">
-																																																																																																																																																																																																																																																																																					
-																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_plainInsert" class="">plainInsert</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_asRowid" class="">asRowid</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#method_isUnconditionalDelete" class="">isUnconditionalDelete</a><br/>
+																																																																																																																																																																																																																																																																																																																																																																																																							
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#method_planRegexp" class="">planRegexp</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#method_planFunctions" class="">planFunctions</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#method_assertConjunct" class="">assertConjunct</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#method_clause" class="">clause</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#method_topLevel" class="">topLevel</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#method_depths" class="">depths</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#method_matching" class="">matching</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#method_mask" class="">mask</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#method_refuse" class="">refuse</a><br/>
 																								</section>
 							<section class="span4">
-																																																																																																																																																																																																																																								
-																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#property_entries" class="">entries</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#property_suppliedMax" class="">suppliedMax</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#property_cleared" class="">cleared</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#property_appended" class="">appended</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#property_blocked" class="">blocked</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#property_blockedAll" class="">blockedAll</a><br/>
-																								</section>
+																
+																	<em>No private properties found</em>
+															</section>
 							<section class="span4">
 																																																																																								
-																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#constant_ROWID_ALIASES" class="">ROWID_ALIASES</a><br/>
-																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html#constant_PLAIN_INSERT" class="">PLAIN_INSERT</a><br/>
+																											<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#constant_ALIAS" class="">ALIAS</a><br/>
+																			<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html#constant_COLUMN" class="">COLUMN</a><br/>
 																								</section>
 						</section>
 					</section>
@@ -330,8 +322,8 @@ caller actually uses.</p>
 					<dl>
 						<dt>File</dt>
 						<dd>
-							<a href="files/src-driver-database-cfw-do-sqlite-rowidplan.html">
-								<div class="path-wrapper">src/Driver/Database/cfw_do_sqlite/RowidPlan.php</div>
+							<a href="files/src-driver-database-cfw-do-sqlite-phpevaluation.html">
+								<div class="path-wrapper">src/Driver/Database/cfw_do_sqlite/PhpEvaluation.php</div>
 							</a>
 						</dd>
 													<dt>Package</dt>
@@ -340,31 +332,17 @@ caller actually uses.</p>
 							</dd>
 												<dt>Class hierarchy</dt>
 						<dd class="hierarchy">
-																																				<div class="namespace-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div>
+																																				<div class="namespace-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div>
 						</dd>
 
 						
 						
 												
-																														<dt>See also</dt>
-																									<dd>
-										<a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Connection.html#method_predictBufferedInsertId">
-											<span class="namespace-wrapper"></span>
-										</a>
-									</dd>
-																																																																																																																																																																																																																											
+																																																																																																																																																																																															
 																	</dl>
 					<h2>Tags</h2>
 					<table class="table table-condensed">
 																											<tr>
-									<th>
-										see
-									</th>
-									<td>
-																																
-																			</td>
-								</tr>
-															<tr>
 									<th>
 										package
 									</th>
@@ -424,11 +402,11 @@ caller actually uses.</p>
 																						
 															    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="constant_ROWID_ALIASES" name="constant_ROWID_ALIASES" class="anchor"></a>
-            <article id="constant_ROWID_ALIASES" class="constant">
-                <h3 class="private ">ROWID_ALIASES</h3>
-                <pre class="signature">ROWID_ALIASES = [&#039;rowid&#039;, &#039;oid&#039;, &#039;_rowid_&#039;]</pre>
-                <p><em>Column names that name the rowid itself, so an insert supplying one is not an append.</em></p>
+            <a id="constant_ALIAS" name="constant_ALIAS" class="anchor"></a>
+            <article id="constant_ALIAS" class="constant">
+                <h3 class="private ">ALIAS</h3>
+                <pre class="signature">ALIAS = &#039;__cfw_rx_&#039;</pre>
+                <p><em></em></p>
                 
             </article>
         </div>
@@ -436,7 +414,7 @@ caller actually uses.</p>
             <h1><i class="fas-solid fa-arrow-down"></i></h1>
                         <dl>
                                 <dt>File</dt>
-                <dd><a href="files/src-driver-database-cfw-do-sqlite-rowidplan.html"><div class="path-wrapper">src/Driver/Database/cfw_do_sqlite/RowidPlan.php</div></a></dd>
+                <dd><a href="files/src-driver-database-cfw-do-sqlite-phpevaluation.html"><div class="path-wrapper">src/Driver/Database/cfw_do_sqlite/PhpEvaluation.php</div></a></dd>
                                 
                                                                                 
                                                             </dl>
@@ -450,21 +428,19 @@ caller actually uses.</p>
 
 																				    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="constant_PLAIN_INSERT" name="constant_PLAIN_INSERT" class="anchor"></a>
-            <article id="constant_PLAIN_INSERT" class="constant">
-                <h3 class="private ">PLAIN_INSERT</h3>
-                <pre class="signature">PLAIN_INSERT = &#039;/^\s*INSERT\s+INTO\s+(&quot;?[A-Za-z_][A-Za-z0-9_$]*&quot;?)\s*\(([^()]*)\)\s*VALUES\s*\(([^()]*)\)\s*;?\s*$/i&#039;</pre>
-                <p><em>The one insert shape this class reads, and the one {@link withSuppliedRowid} splices into.</em></p>
-                <p>No nested parentheses in either list, so a function call, a sub-select or a second VALUES
-tuple all fail to match rather than being read as an append.</p>
-
+            <a id="constant_COLUMN" name="constant_COLUMN" class="anchor"></a>
+            <article id="constant_COLUMN" class="constant">
+                <h3 class="private ">COLUMN</h3>
+                <pre class="signature">COLUMN = &#039;(?:&quot;[^&quot;]+&quot;|[A-Za-z_][A-Za-z0-9_]*)(?:\s*\.\s*(?:&quot;[^&quot;]+&quot;|[A-Za-z_][A-Za-z0-9_]*))?&#039;</pre>
+                <p><em>A column reference: &quot;t&quot;.&quot;c&quot;, t.c, &quot;c&quot; or c.</em></p>
+                
             </article>
         </div>
         <aside class="span4 detailsbar">
             <h1><i class="fas-solid fa-arrow-down"></i></h1>
                         <dl>
                                 <dt>File</dt>
-                <dd><a href="files/src-driver-database-cfw-do-sqlite-rowidplan.html"><div class="path-wrapper">src/Driver/Database/cfw_do_sqlite/RowidPlan.php</div></a></dd>
+                <dd><a href="files/src-driver-database-cfw-do-sqlite-phpevaluation.html"><div class="path-wrapper">src/Driver/Database/cfw_do_sqlite/PhpEvaluation.php</div></a></dd>
                                 
                                                                                 
                                                             </dl>
@@ -477,173 +453,7 @@ tuple all fail to match rather than being read as an append.</p>
     </div>
 
 												
-										<a id="properties" name="properties"></a>
-				<div class="row-fluid">
-					<div class="span8 content class">
-						<h2>Properties</h2>
-					</div>
-					<aside class="span4 detailsbar"></aside>
-				</div>
-
-																																																																																																																																			    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="property_entries" name="property_entries" class="anchor"></a>
-            <article class="property">
-                <h3 class="private ">$entries</h3>
-                <pre class="signature">$entries : array<int,array{table: string, cleared: bool, offset: int, columns: string[], supplied: int|null, suppliedBefore: int}></pre>
-                <p><em>What each buffered insert implies, keyed by buffer index.</em></p>
-                <p>Snapshotted per statement rather than kept as one running total, because the index asked
-about is not always the last thing buffered: <code class="prettyprint">[INSERT t, DELETE t]</code> reports the insert as
-the last insert, and a running counter would have already been cleared by the delete.</p>
-
-
-                                <h4>Type</h4>
-                array&lt;int, array{table: string, cleared: bool, offset: int, columns: string[], supplied: int|null, suppliedBefore: int}&gt;
-                &mdash;                             </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas-solid fa-arrow-down"></i></h1>
-                        <dl>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="property_suppliedMax" name="property_suppliedMax" class="anchor"></a>
-            <article class="property">
-                <h3 class="private ">$suppliedMax</h3>
-                <pre class="signature">$suppliedMax : array<string,int></pre>
-                <p><em>The highest rowid an insert has SUPPLIED to each table, per table.</em></p>
-                <p>Tracked because a supplied rowid is not an append and the offset counter cannot express it.
-<code class="prettyprint">INSERT INTO t (id) VALUES (5)</code> into a table whose committed maximum is 100 leaves the
-maximum at 100, while <code class="prettyprint">VALUES (400)</code> moves it to 400 -- so the next append is 101 in one case
-and 401 in the other, and counting both as <code class="prettyprint">+1</code> predicts 102 either way. That was a silent
-id COLLISION rather than a missed prediction, and it is why this is read rather than refused.</p>
-
-
-                                <h4>Type</h4>
-                array&lt;string, int&gt;
-                &mdash;                             </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas-solid fa-arrow-down"></i></h1>
-                        <dl>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="property_cleared" name="property_cleared" class="anchor"></a>
-            <article class="property">
-                <h3 class="private ">$cleared</h3>
-                <pre class="signature">$cleared : array<string,bool></pre>
-                <p><em>Tables emptied by an unconditional delete, whose next rowid is therefore 1.</em></p>
-                
-
-                                <h4>Type</h4>
-                array&lt;string, bool&gt;
-                &mdash;                             </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas-solid fa-arrow-down"></i></h1>
-                        <dl>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="property_appended" name="property_appended" class="anchor"></a>
-            <article class="property">
-                <h3 class="private ">$appended</h3>
-                <pre class="signature">$appended : array<string,int></pre>
-                <p><em>Rows appended to each table since its base, committed or cleared.</em></p>
-                
-
-                                <h4>Type</h4>
-                array&lt;string, int&gt;
-                &mdash;                             </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas-solid fa-arrow-down"></i></h1>
-                        <dl>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="property_blocked" name="property_blocked" class="anchor"></a>
-            <article class="property">
-                <h3 class="private ">$blocked</h3>
-                <pre class="signature">$blocked : array<string,bool></pre>
-                <p><em>Tables carrying a buffered write this cannot reason about.</em></p>
-                
-
-                                <h4>Type</h4>
-                array&lt;string, bool&gt;
-                &mdash;                             </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas-solid fa-arrow-down"></i></h1>
-                        <dl>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="property_blockedAll" name="property_blockedAll" class="anchor"></a>
-            <article class="property">
-                <h3 class="private ">$blockedAll</h3>
-                <pre class="signature">$blockedAll : bool</pre>
-                <p><em>Whether a statement wrote something unnameable, which blocks every table.</em></p>
-                
-
-                                <h4>Type</h4>
-                bool
-                                            </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas-solid fa-arrow-down"></i></h1>
-                        <dl>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-												
+						
 										<a id="methods" name="methods"></a>
 				<div class="row-fluid">
 					<div class="span8 content class">
@@ -654,321 +464,39 @@ id COLLISION rather than a missed prediction, and it is why this is read rather 
 
 															    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="method_record" name="method_record" class="anchor"></a>
+            <a id="method_plan" name="method_plan" class="anchor"></a>
             <article class="method">
-                <h3 class="public ">record()</h3>
+                <h3 class="public ">plan()</h3>
                 <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">record(int  <span class="argument">$index</span>, string  <span class="argument">$sql</span>, string[]  <span class="argument">$tables</span>, array  <span class="argument">$params = []</span>, string|null  <span class="argument">$integerPrimaryKey = null</span>) : void</pre>
-                <p><em>Folds one buffered statement in.</em></p>
+                <pre class="signature" style="margin-right: 54px;">plan(string  <span class="argument">$sql</span>, array  <span class="argument">$params</span>) : array|null</pre>
+                <p><em>Plans the rewrite, or returns NULL when the statement needs none.</em></p>
                 
 
                                     <h4>Parameters</h4>
                     <table class="table table-condensed table-hover">
                                                     <tr>
-                                <td>int</td>
-                                <td>$index </td>
-                                <td><p>The buffer index the statement was given.</p>
-</td>
-                            </tr>
-                                                    <tr>
                                 <td>string</td>
                                 <td>$sql </td>
-                                <td><p>The statement.</p>
-</td>
-                            </tr>
-                                                    <tr>
-                                <td>string[]</td>
-                                <td>$tables </td>
-                                <td><p>The tables it writes, from SqlAnalyzer::writtenTables().</p>
-</td>
+                                <td></td>
                             </tr>
                                                     <tr>
                                 <td>array</td>
                                 <td>$params </td>
-                                <td><p>The statement's parameters, so an insert that names its own id can be read rather than
-replayed for. Empty is legal: a literal id needs no parameter.</p>
-</td>
-                            </tr>
-                                                    <tr>
-                                <td>string|null</td>
-                                <td>$integerPrimaryKey </td>
-                                <td><p>The table's INTEGER PRIMARY KEY column, when it has one. Supplied by the caller because
-only the connection can read a schema.</p>
-</td>
+                                <td></td>
                             </tr>
                                             </table>
                 
+                                    <h4>Throws</h4>
+                    <dl>
+                                                    <dt>\Drupal\Core\Database\InvalidQueryException</dt>
+                            <dd><p>For a REGEXP a superset cannot recover: in a write, under OR or NOT, or beside an aggregate.</p>
+</dd>
+                                                                    </dl>
                 
                                     <h4>Returns</h4>
-                    void
-                                            &mdash; 
-                                                                                </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas fa-arrow-down"></i></h1>
-                                                            <dl>
-                                                    <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="method_reset" name="method_reset" class="anchor"></a>
-            <article class="method">
-                <h3 class="public ">reset()</h3>
-                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">reset() : void</pre>
-                <p><em>Forgets everything, so the plan can be rebuilt from a truncated buffer.</em></p>
-                
-
-                
-                
-                                    <h4>Returns</h4>
-                    void
-                                            &mdash; 
-                                                                                </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas fa-arrow-down"></i></h1>
-                                                            <dl>
-                                                    <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="method_entry" name="method_entry" class="anchor"></a>
-            <article class="method">
-                <h3 class="public ">entry()</h3>
-                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">entry(int  <span class="argument">$index</span>) : array{table: string, cleared: bool, offset: int, columns: string[], supplied: int|null, suppliedBefore: int}|null</pre>
-                <p><em>Returns what a buffered insert implies about its rowid.</em></p>
-                
-
-                                    <h4>Parameters</h4>
-                    <table class="table table-condensed table-hover">
-                                                    <tr>
-                                <td>int</td>
-                                <td>$index </td>
-                                <td><p>The buffer index.</p>
-</td>
-                            </tr>
-                                            </table>
-                
-                
-                                    <h4>Returns</h4>
-                    array{table: string, cleared: bool, offset: int, columns: string[], supplied: int|null, suppliedBefore: int}|null
-                                            &mdash; <p>The prediction inputs, or NULL when this statement or its table cannot be read.</p>
-
-                                                                                </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas fa-arrow-down"></i></h1>
-                                                            <dl>
-                                                    <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="method_refusalFor" name="method_refusalFor" class="anchor"></a>
-            <article class="method">
-                <h3 class="public ">refusalFor()</h3>
-                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">refusalFor(int  <span class="argument">$index</span>) : string</pre>
-                <p><em>Says WHY {@link entry} refused, so a replay can be attributed rather than counted.</em></p>
-                <p>Three refusals share that one NULL and they have three different remedies: a statement shape
-this does not parse, a later write to the same table, and a write naming no table at all.
-Collapsing them is how &quot;the remaining replays are supplied rowids&quot; became a plausible guess
-that turned out to account for none of them.</p>
-
-
-                                    <h4>Parameters</h4>
-                    <table class="table table-condensed table-hover">
-                                                    <tr>
-                                <td>int</td>
-                                <td>$index </td>
-                                <td><p>The buffer index.</p>
-</td>
-                            </tr>
-                                            </table>
-                
-                
-                                    <h4>Returns</h4>
-                    string
-                                            &mdash; <p>The reason, or an empty string when nothing was refused.</p>
-
-                                                                                </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas fa-arrow-down"></i></h1>
-                                                            <dl>
-                                                    <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="method_isSingleRowInsert" name="method_isSingleRowInsert" class="anchor"></a>
-            <article class="method">
-                <h3 class="public ">isSingleRowInsert()</h3>
-                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">isSingleRowInsert(int  <span class="argument">$index</span>) : bool</pre>
-                <p><em>Returns whether a buffered statement is a plain single-row insert.</em></p>
-                <p>That is enough to know it changed exactly one row, which needs no schema and no replay.
-Unlike {@link entry()} this stays true for a blocked table: a later write to the same
-table changes which rowid this insert got, never how many rows it wrote.</p>
-
-
-                                    <h4>Parameters</h4>
-                    <table class="table table-condensed table-hover">
-                                                    <tr>
-                                <td>int</td>
-                                <td>$index </td>
-                                <td><p>The buffer index.</p>
-</td>
-                            </tr>
-                                            </table>
-                
-                
-                                    <h4>Returns</h4>
-                    bool
-                                            &mdash; <p>TRUE when the statement appends exactly one row.</p>
-
-                                                                                </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas fa-arrow-down"></i></h1>
-                                                            <dl>
-                                                    <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="method_suppliedMaxFor" name="method_suppliedMaxFor" class="anchor"></a>
-            <article class="method">
-                <h3 class="public ">suppliedMaxFor()</h3>
-                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">suppliedMaxFor(string  <span class="argument">$table</span>) : int</pre>
-                <p><em>Returns the highest rowid an insert has SUPPLIED to one table so far.</em></p>
-                
-
-                                    <h4>Parameters</h4>
-                    <table class="table table-condensed table-hover">
-                                                    <tr>
-                                <td>string</td>
-                                <td>$table </td>
-                                <td><p>The table SqlAnalyzer named, lower-cased.</p>
-</td>
-                            </tr>
-                                            </table>
-                
-                
-                                    <h4>Returns</h4>
-                    int
-                                            &mdash; <p>The value, or 0 when nothing buffered has named its own id in that table.</p>
-
-                                                                                </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas fa-arrow-down"></i></h1>
-                                                            <dl>
-                                                    <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="method_withSuppliedRowid" name="method_withSuppliedRowid" class="anchor"></a>
-            <article class="method">
-                <h3 class="public ">withSuppliedRowid()</h3>
-                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">withSuppliedRowid(string  <span class="argument">$sql</span>, string  <span class="argument">$table</span>, string  <span class="argument">$integerPrimaryKey</span>, int  <span class="argument">$rowid</span>) : string|null</pre>
-                <p><em>Rewrites a plain insert so it names the rowid it is to be given.</em></p>
-                <p>A predicted id is only the id the caller is TOLD; on a forwarding lane the statement is
-replayed on another object whose SQLite appends by its own maximum, so the two disagree and
-nothing errors. Naming the key column closes that: the id in the statement is the id
-committed, wherever it is replayed.</p>
-<p>The value is spliced in as a decimal literal rather than as a parameter, so the positional
-ordinals of the existing placeholders do not move.</p>
-
-
-                                    <h4>Parameters</h4>
-                    <table class="table table-condensed table-hover">
-                                                    <tr>
-                                <td>string</td>
-                                <td>$sql </td>
-                                <td><p>The statement.</p>
-</td>
-                            </tr>
-                                                    <tr>
-                                <td>string</td>
-                                <td>$table </td>
-                                <td><p>The table SqlAnalyzer named, lower-cased.</p>
-</td>
-                            </tr>
-                                                    <tr>
-                                <td>string</td>
-                                <td>$integerPrimaryKey </td>
-                                <td><p>The table's INTEGER PRIMARY KEY column.</p>
-</td>
-                            </tr>
-                                                    <tr>
-                                <td>int</td>
-                                <td>$rowid </td>
-                                <td><p>The rowid to supply.</p>
-</td>
-                            </tr>
-                                            </table>
-                
-                
-                                    <h4>Returns</h4>
-                    string|null
-                                            &mdash; <p>The rewritten statement, or NULL when the shape is one this class does not read or the
-insert already names its own id.</p>
+                    array|null
+                                            &mdash; <p><code class="prettyprint">sql</code>, and what <code class="prettyprint">apply()</code> needs: <code class="prettyprint">filters</code>, <code class="prettyprint">computed</code>, <code class="prettyprint">limit</code>, <code class="prettyprint">offset</code>, <code class="prettyprint">distinct</code>,
+<code class="prettyprint">count</code>.</p>
 
                                                                                 </article>
         </div>
@@ -977,7 +505,7 @@ insert already names its own id.</p>
                             <span class="label label-info">static</span>
                                                             <dl>
                                                     <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div></a></dd>
                                                                                                 
                                                             </dl>
             <h2>Tags</h2>
@@ -987,55 +515,34 @@ insert already names its own id.</p>
         </aside>
     </div>
 
-																													    <div class="row-fluid">
+																				    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="method_suppliedRowid" name="method_suppliedRowid" class="anchor"></a>
+            <a id="method_apply" name="method_apply" class="anchor"></a>
             <article class="method">
-                <h3 class="public ">suppliedRowid()</h3>
+                <h3 class="public ">apply()</h3>
                 <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">suppliedRowid(string[]  <span class="argument">$columns</span>, string[]  <span class="argument">$values</span>, array  <span class="argument">$params</span>, string|null  <span class="argument">$integerPrimaryKey</span>) : int|null</pre>
-                <p><em>Reads the rowid an insert supplies, from its own VALUES expression.</em></p>
-                <p>The id is sitting in the statement that assigns it, and the driver was REPLAYING THE WHOLE
-BUFFER to learn it. Only two expressions are read -- a decimal literal, and a placeholder
-resolved against the statement's own parameters -- and everything else, <code class="prettyprint">NULL</code> included,
-answers NULL so the caller falls back to what it did before.</p>
-<p><code class="prettyprint">NULL</code> matters and is not an oversight: <code class="prettyprint">INSERT INTO t (id) VALUES (NULL)</code> makes SQLite
-assign the id after all, so it is an append wearing a supplied id's shape.</p>
-
+                <pre class="signature" style="margin-right: 54px;">apply(array  <span class="argument">$rows</span>, array  <span class="argument">$plan</span>) : array</pre>
+                <p><em>Applies a plan to the rows the engine returned.</em></p>
+                
 
                                     <h4>Parameters</h4>
                     <table class="table table-condensed table-hover">
                                                     <tr>
-                                <td>string[]</td>
-                                <td>$columns </td>
-                                <td><p>Lower-cased column names.</p>
-</td>
-                            </tr>
-                                                    <tr>
-                                <td>string[]</td>
-                                <td>$values </td>
-                                <td><p>The VALUES expressions, positionally aligned with $columns.</p>
-</td>
+                                <td>array</td>
+                                <td>$rows </td>
+                                <td></td>
                             </tr>
                                                     <tr>
                                 <td>array</td>
-                                <td>$params </td>
-                                <td><p>The statement's parameters, named or positional.</p>
-</td>
-                            </tr>
-                                                    <tr>
-                                <td>string|null</td>
-                                <td>$integerPrimaryKey </td>
-                                <td><p>The table's INTEGER PRIMARY KEY column, when it has one.</p>
-</td>
+                                <td>$plan </td>
+                                <td></td>
                             </tr>
                                             </table>
                 
                 
                                     <h4>Returns</h4>
-                    int|null
-                                            &mdash; <p>The supplied rowid, or NULL when the statement does not supply one this can read.</p>
-
+                    array
+                                            &mdash; 
                                                                                 </article>
         </div>
         <aside class="span4 detailsbar">
@@ -1043,7 +550,7 @@ assign the id after all, so it is an append wearing a supplied id's shape.</p>
                             <span class="label label-info">static</span>
                                                             <dl>
                                                     <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div></a></dd>
                                                                                                 
                                                             </dl>
             <h2>Tags</h2>
@@ -1055,35 +562,39 @@ assign the id after all, so it is an append wearing a supplied id's shape.</p>
 
 																																						    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="method_suppliesRowid" name="method_suppliesRowid" class="anchor"></a>
+            <a id="method_substringIndex" name="method_substringIndex" class="anchor"></a>
             <article class="method">
-                <h3 class="public ">suppliesRowid()</h3>
+                <h3 class="public ">substringIndex()</h3>
                 <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">suppliesRowid(string[]  <span class="argument">$columns</span>, string|null  <span class="argument">$integerPrimaryKey</span>) : bool</pre>
-                <p><em>Returns whether a column list names the rowid itself.</em></p>
-                
+                <pre class="signature" style="margin-right: 54px;">substringIndex(string  <span class="argument">$string</span>, string  <span class="argument">$delimiter</span>, int  <span class="argument">$count</span>) : string</pre>
+                <p><em>MySQL&#039;s SUBSTRING_INDEX(), both directions.</em></p>
+                <p>Core's SQLite callback handles a positive count only; a negative one counts from the right,
+which is what MySQL does and what a query written against MySQL expects.</p>
+
 
                                     <h4>Parameters</h4>
                     <table class="table table-condensed table-hover">
                                                     <tr>
-                                <td>string[]</td>
-                                <td>$columns </td>
-                                <td><p>Lower-cased column names.</p>
-</td>
+                                <td>string</td>
+                                <td>$string </td>
+                                <td></td>
                             </tr>
                                                     <tr>
-                                <td>string|null</td>
-                                <td>$integerPrimaryKey </td>
-                                <td><p>The table's INTEGER PRIMARY KEY column, when it has one.</p>
-</td>
+                                <td>string</td>
+                                <td>$delimiter </td>
+                                <td></td>
+                            </tr>
+                                                    <tr>
+                                <td>int</td>
+                                <td>$count </td>
+                                <td></td>
                             </tr>
                                             </table>
                 
                 
                                     <h4>Returns</h4>
-                    bool
-                                            &mdash; <p>TRUE when the insert chooses its own rowid, so SQLite does not append.</p>
-
+                    string
+                                            &mdash; 
                                                                                 </article>
         </div>
         <aside class="span4 detailsbar">
@@ -1091,7 +602,7 @@ assign the id after all, so it is an append wearing a supplied id's shape.</p>
                             <span class="label label-info">static</span>
                                                             <dl>
                                                     <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div></a></dd>
                                                                                                 
                                                             </dl>
             <h2>Tags</h2>
@@ -1101,17 +612,15 @@ assign the id after all, so it is an append wearing a supplied id's shape.</p>
         </aside>
     </div>
 
-																																																																																																																																																																																																							    <div class="row-fluid">
+																																																																																																																																																																																																																									    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="method_plainInsert" name="method_plainInsert" class="anchor"></a>
+            <a id="method_planRegexp" name="method_planRegexp" class="anchor"></a>
             <article class="method">
-                <h3 class="private ">plainInsert()</h3>
+                <h3 class="private ">planRegexp()</h3>
                 <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">plainInsert(string  <span class="argument">$sql</span>, string  <span class="argument">$table</span>) : array{0: string[], 1: string[]}|null</pre>
-                <p><em>Returns the columns AND the VALUES expressions of a plain single-row insert into one table.</em></p>
-                <p>The two are returned together and positionally aligned, which is what lets an insert that
-names its own id be read: the id is in the tuple opposite the column that names it.</p>
-
+                <pre class="signature" style="margin-right: 54px;">planRegexp(string  <span class="argument">$sql</span>, string  <span class="argument">$masked</span>, array  <span class="argument">$params</span>, array  <span class="argument">$plan</span>, string  <span class="argument">$whole</span>) : string</pre>
+                <p><em>Plans the filter for the REGEXP conditions of a plain SELECT.</em></p>
+                
 
                                     <h4>Parameters</h4>
                     <table class="table table-condensed table-hover">
@@ -1123,62 +632,40 @@ names its own id be read: the id is in the tuple opposite the column that names 
                             </tr>
                                                     <tr>
                                 <td>string</td>
-                                <td>$table </td>
-                                <td><p>The table SqlAnalyzer named, lower-cased.</p>
+                                <td>$masked </td>
+                                <td><p>The statement with literals blanked.</p>
 </td>
                             </tr>
-                                            </table>
-                
-                
-                                    <h4>Returns</h4>
-                    array{0: string[], 1: string[]}|null
-                                            &mdash; <p>The lower-cased column names and the VALUES expressions, or NULL when the statement is any
-other shape or the two lists are not the same width.</p>
-
-                                                                                </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas fa-arrow-down"></i></h1>
-                            <span class="label label-info">static</span>
-                                                            <dl>
-                                                    <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																													    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="method_asRowid" name="method_asRowid" class="anchor"></a>
-            <article class="method">
-                <h3 class="private ">asRowid()</h3>
-                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">asRowid(mixed  <span class="argument">$value</span>) : int|null</pre>
-                <p><em>Narrows a bound parameter to a rowid, or refuses it.</em></p>
-                <p>A numeric STRING is accepted because that is how the host hands integers back across the
-JSON bridge; a float, a bool and NULL are refused rather than cast, since each would produce
-an id SQLite did not assign.</p>
-
-
-                                    <h4>Parameters</h4>
-                    <table class="table table-condensed table-hover">
                                                     <tr>
-                                <td>mixed</td>
-                                <td>$value </td>
-                                <td><p>The bound value.</p>
+                                <td>array</td>
+                                <td>$params </td>
+                                <td><p>The bound parameters.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>array</td>
+                                <td>$plan </td>
+                                <td><p>Receives the filters and the clause rewrites.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>string</td>
+                                <td>$whole </td>
+                                <td><p>The original statement, for refusal messages.</p>
 </td>
                             </tr>
                                             </table>
                 
+                                    <h4>Throws</h4>
+                    <dl>
+                                                    <dt>\Drupal\Core\Database\InvalidQueryException</dt>
+                            <dd><p>For a shape a post-filter cannot answer exactly.</p>
+</dd>
+                                                                    </dl>
                 
                                     <h4>Returns</h4>
-                    int|null
-                                            &mdash; <p>The rowid, or NULL when the value is not one.</p>
+                    string
+                                            &mdash; <p>The statement with each REGEXP condition replaced by 1.</p>
 
                                                                                 </article>
         </div>
@@ -1187,7 +674,7 @@ an id SQLite did not assign.</p>
                             <span class="label label-info">static</span>
                                                             <dl>
                                                     <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div></a></dd>
                                                                                                 
                                                             </dl>
             <h2>Tags</h2>
@@ -1199,12 +686,12 @@ an id SQLite did not assign.</p>
 
 																				    <div class="row-fluid">
         <div class="span8 content class">
-            <a id="method_isUnconditionalDelete" name="method_isUnconditionalDelete" class="anchor"></a>
+            <a id="method_planFunctions" name="method_planFunctions" class="anchor"></a>
             <article class="method">
-                <h3 class="private ">isUnconditionalDelete()</h3>
+                <h3 class="private ">planFunctions()</h3>
                 <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">isUnconditionalDelete(string  <span class="argument">$sql</span>, string  <span class="argument">$table</span>) : bool</pre>
-                <p><em>Returns whether a statement empties a table outright.</em></p>
+                <pre class="signature" style="margin-right: 54px;">planFunctions(string  <span class="argument">$sql</span>, array  <span class="argument">$params</span>, array  <span class="argument">$plan</span>) : string</pre>
+                <p><em>Plans the PHP evaluation of MD5() and SUBSTRING_INDEX() in the select list.</em></p>
                 
 
                                     <h4>Parameters</h4>
@@ -1216,17 +703,23 @@ an id SQLite did not assign.</p>
 </td>
                             </tr>
                                                     <tr>
-                                <td>string</td>
-                                <td>$table </td>
-                                <td><p>The table SqlAnalyzer named, lower-cased.</p>
+                                <td>array</td>
+                                <td>$params </td>
+                                <td><p>The bound parameters.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>array</td>
+                                <td>$plan </td>
+                                <td><p>Receives the computed columns.</p>
 </td>
                             </tr>
                                             </table>
                 
                 
                                     <h4>Returns</h4>
-                    bool
-                                            &mdash; <p>TRUE for <code class="prettyprint">DELETE FROM t</code> with no WHERE, which is what a router rebuild opens with.</p>
+                    string
+                                            &mdash; <p>The statement with each call replaced by its column.</p>
 
                                                                                 </article>
         </div>
@@ -1235,7 +728,7 @@ an id SQLite did not assign.</p>
                             <span class="label label-info">static</span>
                                                             <dl>
                                                     <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-RowidPlan.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\RowidPlan</div></a></dd>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div></a></dd>
                                                                                                 
                                                             </dl>
             <h2>Tags</h2>
@@ -1245,16 +738,359 @@ an id SQLite did not assign.</p>
         </aside>
     </div>
 
-																							</div>
+																													    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_assertConjunct" name="method_assertConjunct" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">assertConjunct()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">assertConjunct(string  <span class="argument">$masked</span>, array  <span class="argument">$depth</span>, int  <span class="argument">$at</span>, array  <span class="argument">$where</span>, string  <span class="argument">$whole</span>) : void</pre>
+                <p><em>Why the REGEXP at `$at` cannot be filtered after the fact, if it cannot.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$masked </td>
+                                <td></td>
+                            </tr>
+                                                    <tr>
+                                <td>array</td>
+                                <td>$depth </td>
+                                <td></td>
+                            </tr>
+                                                    <tr>
+                                <td>int</td>
+                                <td>$at </td>
+                                <td></td>
+                            </tr>
+                                                    <tr>
+                                <td>array</td>
+                                <td>$where </td>
+                                <td></td>
+                            </tr>
+                                                    <tr>
+                                <td>string</td>
+                                <td>$whole </td>
+                                <td></td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    void
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                            <span class="label label-info">static</span>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_clause" name="method_clause" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">clause()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">clause(string  <span class="argument">$masked</span>, string  <span class="argument">$keyword</span>, array  <span class="argument">$next</span>) : ?array</pre>
+                <p><em>The byte span of a top-level clause, from its keyword to the next listed keyword or the end.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$masked </td>
+                                <td></td>
+                            </tr>
+                                                    <tr>
+                                <td>string</td>
+                                <td>$keyword </td>
+                                <td></td>
+                            </tr>
+                                                    <tr>
+                                <td>array</td>
+                                <td>$next </td>
+                                <td></td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    ?array
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                            <span class="label label-info">static</span>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_topLevel" name="method_topLevel" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">topLevel()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">topLevel(string  <span class="argument">$masked</span>, string  <span class="argument">$keyword</span>, int  <span class="argument">$from = 0</span>) : ?int</pre>
+                <p><em>The offset of a keyword at parenthesis depth 0, or NULL.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$masked </td>
+                                <td></td>
+                            </tr>
+                                                    <tr>
+                                <td>string</td>
+                                <td>$keyword </td>
+                                <td></td>
+                            </tr>
+                                                    <tr>
+                                <td>int</td>
+                                <td>$from </td>
+                                <td></td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    ?int
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                            <span class="label label-info">static</span>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_depths" name="method_depths" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">depths()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">depths(string  <span class="argument">$masked</span>) : int[]</pre>
+                <p><em>Maps each offset to its parenthesis depth.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$masked </td>
+                                <td><p>The statement with literals blanked.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    int[]
+                                            &mdash; <p>The depth at each offset.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                            <span class="label label-info">static</span>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_matching" name="method_matching" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">matching()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">matching(string  <span class="argument">$masked</span>, int  <span class="argument">$open</span>) : int|null</pre>
+                <p><em>Finds the parenthesis that closes the one at an offset.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$masked </td>
+                                <td><p>The statement with literals blanked.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>int</td>
+                                <td>$open </td>
+                                <td><p>The offset of the opening parenthesis.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    int|null
+                                            &mdash; <p>The offset of the closing parenthesis, or null when unbalanced.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                            <span class="label label-info">static</span>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_mask" name="method_mask" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">mask()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">mask(string  <span class="argument">$sql</span>) : string</pre>
+                <p><em>Single-quoted literals blanked to spaces, so a keyword inside one is never read as SQL.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$sql </td>
+                                <td></td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    string
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                            <span class="label label-info">static</span>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_refuse" name="method_refuse" class="anchor"></a>
+            <article class="method">
+                <h3 class="private ">refuse()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">refuse(string  <span class="argument">$why</span>, string  <span class="argument">$sql</span>) : never</pre>
+                <p><em>Refuses a statement whose REGEXP cannot be answered in PHP.</em></p>
+                
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$why </td>
+                                <td><p>What about the statement rules it out.</p>
+</td>
+                            </tr>
+                                                    <tr>
+                                <td>string</td>
+                                <td>$sql </td>
+                                <td><p>The statement.</p>
+</td>
+                            </tr>
+                                            </table>
+                
+                                    <h4>Throws</h4>
+                    <dl>
+                                                    <dt>\Drupal\Core\Database\InvalidQueryException</dt>
+                            <dd><p>Always.</p>
+</dd>
+                                                                    </dl>
+                
+                                    <h4>Returns</h4>
+                    never
+                                            &mdash; 
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                            <span class="label label-info">static</span>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-PhpEvaluation.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\PhpEvaluation</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+														</div>
 	</section>
 
 	<div id="source-view" class="modal hide fade" tabindex="-1" role="dialog" aria-labelledby="source-view-label" aria-hidden="true">
 		<div class="modal-header">
 			<button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
-			<h3 id="source-view-label">RowidPlan.php</h3>
+			<h3 id="source-view-label">PhpEvaluation.php</h3>
 		</div>
 		<div class="modal-body">
-			<pre data-src="files/src/Driver/Database/cfw_do_sqlite/RowidPlan.php.txt" class="language-php line-numbers"></pre>
+			<pre data-src="files/src/Driver/Database/cfw_do_sqlite/PhpEvaluation.php.txt" class="language-php line-numbers"></pre>
 		</div>
 	</div>
 
