@@ -82,64 +82,64 @@
 								<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle " data-toggle="collapse" data-target="#namespace-1533091219"></a>
+									<a class="accordion-toggle " data-toggle="collapse" data-target="#namespace-1356918721"></a>
 								<a href="namespaces/default.html" style="margin-left: 30px; padding-left: 0">\</a>
 			</div>
-			<div id="namespace-1533091219" class="accordion-body collapse in">
+			<div id="namespace-1356918721" class="accordion-body collapse in">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-779203167"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-266162995"></a>
 								<a href="namespaces/drupal.html" style="margin-left: 30px; padding-left: 0">Drupal</a>
 			</div>
-			<div id="namespace-779203167" class="accordion-body collapse ">
+			<div id="namespace-266162995" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1726136800"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-132172879"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
 			</div>
-			<div id="namespace-1726136800" class="accordion-body collapse ">
+			<div id="namespace-132172879" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1040998883"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-703466557"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver.html" style="margin-left: 30px; padding-left: 0">Driver</a>
 			</div>
-			<div id="namespace-1040998883" class="accordion-body collapse ">
+			<div id="namespace-703466557" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1992200000"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1834522323"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database.html" style="margin-left: 30px; padding-left: 0">Database</a>
 			</div>
-			<div id="namespace-1992200000" class="accordion-body collapse ">
+			<div id="namespace-1834522323" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1190249354"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-215399361"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite.html" style="margin-left: 30px; padding-left: 0">cfw_do_sqlite</a>
 			</div>
-			<div id="namespace-1190249354" class="accordion-body collapse ">
+			<div id="namespace-215399361" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 													<div class="accordion" style="margin-bottom: 0">
 		<div class="accordion-group">
 			<div class="accordion-heading">
-									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-1223824308"></a>
+									<a class="accordion-toggle collapsed" data-toggle="collapse" data-target="#namespace-137211692"></a>
 								<a href="namespaces/drupal-cfw-do-sqlite-driver-database-cfw-do-sqlite-install.html" style="margin-left: 30px; padding-left: 0">Install</a>
 			</div>
-			<div id="namespace-1223824308" class="accordion-body collapse ">
+			<div id="namespace-137211692" class="accordion-body collapse ">
 				<div class="accordion-inner">
 
 					
@@ -2079,7 +2079,58 @@ earlier statements applied.</p>
             <article class="method">
                 <h3 class="public ">collapseInLists()</h3>
                 <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">collapseInLists(string  <span class="argument">$sql</span>, array  <span class="argument">$params</span>) : array{rows: array, rowCount: int|null, bufferIndex: int|null}</pre>
+                <pre class="signature" style="margin-right: 54px;">collapseInLists(string  <span class="argument">$sql</span>, array  <span class="argument">$params</span>) : array{0: string, 1: array}</pre>
+                <p><em>Folds oversized placeholder `IN()` lists into one bound JSON array each.</em></p>
+                <p>The host caps a statement at 100 bound parameters, and a menu rebuild on a migrated site runs
+<code class="prettyprint">id NOT IN (...)</code> over 400 links. <code class="prettyprint">IN (SELECT value FROM json_each(:list))</code> is the same set
+in one parameter, so it is exact for <code class="prettyprint">IN</code> and <code class="prettyprint">NOT IN</code> alike, under any ordering, limit or
+aggregate, which batching cannot promise. Largest lists first, until the statement fits. A
+list holding a value JSON cannot carry (an envelope, invalid UTF-8) is left alone.</p>
+
+
+                                    <h4>Parameters</h4>
+                    <table class="table table-condensed table-hover">
+                                                    <tr>
+                                <td>string</td>
+                                <td>$sql </td>
+                                <td></td>
+                            </tr>
+                                                    <tr>
+                                <td>array</td>
+                                <td>$params </td>
+                                <td></td>
+                            </tr>
+                                            </table>
+                
+                
+                                    <h4>Returns</h4>
+                    array{0: string, 1: array}
+                                            &mdash; <p>The statement and its parameters, unchanged when nothing needed folding.</p>
+
+                                                                                </article>
+        </div>
+        <aside class="span4 detailsbar">
+            <h1><i class="fas fa-arrow-down"></i></h1>
+                            <span class="label label-info">static</span>
+                                                            <dl>
+                                                    <dt>Inherited from</dt>
+                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Connection.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection</div></a></dd>
+                                                                                                
+                                                            </dl>
+            <h2>Tags</h2>
+            <table class="table table-condensed">
+                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
+                            </table>
+        </aside>
+    </div>
+
+																				    <div class="row-fluid">
+        <div class="span8 content class">
+            <a id="method_runStatement" name="method_runStatement" class="anchor"></a>
+            <article class="method">
+                <h3 class="public ">runStatement()</h3>
+                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
+                <pre class="signature" style="margin-right: 54px;">runStatement(string  <span class="argument">$sql</span>, array  <span class="argument">$params</span>) : array{rows: array, rowCount: int|null, bufferIndex: int|null}</pre>
                 <p><em>Runs a statement, or buffers it, and returns what the caller needs.</em></p>
                 <p>This is the whole of the transaction mapping, and the read case is the part
 that is not obvious.</p>
@@ -2130,57 +2181,6 @@ answering from the committed database, which would be quietly wrong;</li>
                     array{rows: array, rowCount: int|null, bufferIndex: int|null}
                                             &mdash; <p>The rows, the number of rows changed where it is known, and the buffer
 index when the statement was withheld.</p>
-
-                                                                                </article>
-        </div>
-        <aside class="span4 detailsbar">
-            <h1><i class="fas fa-arrow-down"></i></h1>
-                            <span class="label label-info">static</span>
-                                                            <dl>
-                                                    <dt>Inherited from</dt>
-                    <dd><a href="classes/Drupal-cfw-do-sqlite-Driver-Database-cfw-do-sqlite-Connection.html"><div class="path-wrapper">\Drupal\cfw_do_sqlite\Driver\Database\cfw_do_sqlite\Connection</div></a></dd>
-                                                                                                
-                                                            </dl>
-            <h2>Tags</h2>
-            <table class="table table-condensed">
-                                                                    <tr><td colspan="2"><em>None found</em></td></tr>
-                            </table>
-        </aside>
-    </div>
-
-																				    <div class="row-fluid">
-        <div class="span8 content class">
-            <a id="method_runStatement" name="method_runStatement" class="anchor"></a>
-            <article class="method">
-                <h3 class="public ">runStatement()</h3>
-                <a href="#source-view" role="button" class="pull-right btn" data-toggle="modal" style="font-size: 1.1em; padding: 9px 14px"><i class="fa-solid fa-code"></i></a>
-                <pre class="signature" style="margin-right: 54px;">runStatement(string  <span class="argument">$sql</span>, array  <span class="argument">$params</span>) : array{0: string, 1: array}</pre>
-                <p><em>Folds oversized placeholder `IN()` lists into one bound JSON array each.</em></p>
-                <p>The host caps a statement at 100 bound parameters, and a menu rebuild on a migrated site runs
-<code class="prettyprint">id NOT IN (...)</code> over 400 links. <code class="prettyprint">IN (SELECT value FROM json_each(:list))</code> is the same set
-in one parameter, so it is exact for <code class="prettyprint">IN</code> and <code class="prettyprint">NOT IN</code> alike, under any ordering, limit or
-aggregate, which batching cannot promise. Largest lists first, until the statement fits. A
-list holding a value JSON cannot carry (an envelope, invalid UTF-8) is left alone.</p>
-
-
-                                    <h4>Parameters</h4>
-                    <table class="table table-condensed table-hover">
-                                                    <tr>
-                                <td>string</td>
-                                <td>$sql </td>
-                                <td></td>
-                            </tr>
-                                                    <tr>
-                                <td>array</td>
-                                <td>$params </td>
-                                <td></td>
-                            </tr>
-                                            </table>
-                
-                
-                                    <h4>Returns</h4>
-                    array{0: string, 1: array}
-                                            &mdash; <p>The statement and its parameters, unchanged when nothing needed folding.</p>
 
                                                                                 </article>
         </div>
@@ -4167,7 +4167,7 @@ it learned, so bisecting is not wasted work.</p>
 							</a>
 							and authored
 							                    on
-							September 30th, 2026 at 12:34.
+							September 30th, 2026 at 13:04.
 						</section>
 					</section>
 				</section>
