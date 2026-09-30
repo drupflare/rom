@@ -1089,39 +1089,16 @@ class Connection extends SqliteDriverConnection
 	}
 
 	/**
-	 * Runs a statement, or buffers it, and returns what the caller needs.
+	 * Folds oversized placeholder `IN()` lists into one bound JSON array each.
 	 *
-	 * This is the whole of the transaction mapping, and the read case is the part
-	 * that is not obvious.
+	 * The host caps a statement at 100 bound parameters, and a menu rebuild on a migrated site runs
+	 * `id NOT IN (...)` over 400 links. `IN (SELECT value FROM json_each(:list))` is the same set
+	 * in one parameter, so it is exact for `IN` and `NOT IN` alike, under any ordering, limit or
+	 * aggregate, which batching cannot promise. Largest lists first, until the statement fits. A
+	 * list holding a value JSON cannot carry (an envelope, invalid UTF-8) is left alone.
 	 *
-	 * With no Drupal transaction open, everything goes straight to the host. The
-	 * Durable Object still wraps each event in an implicit transaction of its own,
-	 * so a single statement is atomic without any help.
-	 *
-	 * With a transaction open:
-	 * - a write is buffered, and returns no rows and no row count;
-	 * - a read whose tables have no buffered write is proven unaffected, and goes
-	 *   straight to the host;
-	 * - a read whose tables do have buffered writes has to observe them, so the
-	 *   buffer is replayed and the read evaluated inside a host transaction that
-	 *   is then rolled back. Without the host's transaction entry point that is
-	 *   impossible, and the driver raises UncommittedStateException rather than
-	 *   answering from the committed database, which would be quietly wrong;
-	 * - a statement that cannot be classified is refused for the same reason.
-	 *
-	 * @param string $sql
-	 *   The statement, prefixes and identifier quotes already resolved.
-	 * @param array $params
-	 *   The parameters, ready for the host.
-	 *
-	 * @return array{rows: array, rowCount: int|null, bufferIndex: int|null}
-	 *   The rows, the number of rows changed where it is known, and the buffer
-	 *   index when the statement was withheld.
-	 *
-	 * @throws UncommittedStateException
-	 *   If the statement cannot be answered without observing buffered state.
-	 * @throws SqlErrorException
-	 *   If SQLite rejected the statement.
+	 * @return array{0: string, 1: array}
+	 *   The statement and its parameters, unchanged when nothing needed folding.
 	 */
 	public static function collapseInLists(string $sql, array $params): array
 	{
@@ -1175,16 +1152,39 @@ class Connection extends SqliteDriverConnection
 	}
 
 	/**
-	 * Folds oversized placeholder `IN()` lists into one bound JSON array each.
+	 * Runs a statement, or buffers it, and returns what the caller needs.
 	 *
-	 * The host caps a statement at 100 bound parameters, and a menu rebuild on a migrated site runs
-	 * `id NOT IN (...)` over 400 links. `IN (SELECT value FROM json_each(:list))` is the same set
-	 * in one parameter, so it is exact for `IN` and `NOT IN` alike, under any ordering, limit or
-	 * aggregate, which batching cannot promise. Largest lists first, until the statement fits. A
-	 * list holding a value JSON cannot carry (an envelope, invalid UTF-8) is left alone.
+	 * This is the whole of the transaction mapping, and the read case is the part
+	 * that is not obvious.
 	 *
-	 * @return array{0: string, 1: array}
-	 *   The statement and its parameters, unchanged when nothing needed folding.
+	 * With no Drupal transaction open, everything goes straight to the host. The
+	 * Durable Object still wraps each event in an implicit transaction of its own,
+	 * so a single statement is atomic without any help.
+	 *
+	 * With a transaction open:
+	 * - a write is buffered, and returns no rows and no row count;
+	 * - a read whose tables have no buffered write is proven unaffected, and goes
+	 *   straight to the host;
+	 * - a read whose tables do have buffered writes has to observe them, so the
+	 *   buffer is replayed and the read evaluated inside a host transaction that
+	 *   is then rolled back. Without the host's transaction entry point that is
+	 *   impossible, and the driver raises UncommittedStateException rather than
+	 *   answering from the committed database, which would be quietly wrong;
+	 * - a statement that cannot be classified is refused for the same reason.
+	 *
+	 * @param string $sql
+	 *   The statement, prefixes and identifier quotes already resolved.
+	 * @param array $params
+	 *   The parameters, ready for the host.
+	 *
+	 * @return array{rows: array, rowCount: int|null, bufferIndex: int|null}
+	 *   The rows, the number of rows changed where it is known, and the buffer
+	 *   index when the statement was withheld.
+	 *
+	 * @throws UncommittedStateException
+	 *   If the statement cannot be answered without observing buffered state.
+	 * @throws SqlErrorException
+	 *   If SQLite rejected the statement.
 	 */
 	public function runStatement(string $sql, array $params): array
 	{
