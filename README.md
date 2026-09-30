@@ -372,9 +372,9 @@ than read from documentation.
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------- |
 | **100 bound parameters per statement**     | 100 binds succeed, 101 throws `too many SQL variables: SQLITE_ERROR`. Bisected directly            |
 | **50-byte `LIKE`/`GLOB` patterns**         | exactly 50; SQLite's own default is 50,000, so the runtime lowers it                               |
-| **No user-defined functions**              | `MD5()`, `SUBSTRING_INDEX()` and `REGEXP` fail loudly at runtime                                   |
+| **No user-defined functions**              | `MD5()`, `SUBSTRING_INDEX()` and `REGEXP` are evaluated in PHP instead; see below                  |
 | **No user-defined collations**             | `NOCASE_UTF8` becomes builtin `NOCASE`, which folds **ASCII only**                                 |
-| **No `REGEXP`**                            | `no such function: REGEXP`, so Views regex filters do not work                                     |
+| **No `REGEXP`**                            | `no such function: REGEXP`; the driver filters in PHP, so Views regex filters work                 |
 | **Reading an integer above 2^53 is lossy** | written `9007199254740993`, read back `9007199254740992`. Writing is exact                         |
 | **`CREATE TEMPORARY TABLE` is refused**    | `not authorized: SQLITE_AUTH`, so `queryTemporary()` cannot work                                   |
 | **`sqlite_version()` is refused**          | `not authorized to use function: sqlite_version`                                                   |
@@ -480,14 +480,24 @@ from grepping non-test `core/lib` and `core/modules` for the function inside SQL
 | `CONCAT_WS()`       | **yes** - views `Combine` filter                               | builtin since 3.44            | passes through                  |
 | `POW()`             | not found in core SQL                                          | builtin with math functions   | passes through                  |
 | `EXP()`             | **yes** - `search_node` relevance scoring                      | builtin with math functions   | passes through                  |
-| `MD5()`             | not found in core SQL                                          | **none**                      | fails loudly at runtime         |
-| `SUBSTRING_INDEX()` | not found in core SQL                                          | **none**                      | fails loudly at runtime         |
-| `REGEXP`            | **yes** - views `StringFilter`, `NumericFilter`, `Combine`     | **none**                      | fails loudly at runtime         |
+| `MD5()`             | not found in core SQL                                          | **none**                      | **in PHP, in the select list**  |
+| `SUBSTRING_INDEX()` | not found in core SQL                                          | **none**                      | **in PHP, in the select list**  |
+| `REGEXP`            | **yes** - views `StringFilter`, `NumericFilter`, `Combine`     | **none**                      | **filtered in PHP**             |
 | `GLOB()` override   | **yes, indirectly** - `LIKE BINARY` from entity queries        | builtin, **wrong wildcards**  | **`LIKE BINARY` is translated** |
 | `NOCASE_UTF8`       | **yes** - every non-binary VARCHAR/TEXT column                 | `NOCASE`, ASCII only          | **substituted, ASCII-only**     |
 
 The rewrite is four names, applied only outside string literals, comments and quoted
 identifiers, using the same literal-aware scanner the table analysis uses.
+
+The three with no builtin are answered in PHP, with core's own semantics. `x [NOT] REGEXP :p` in a
+`SELECT`, as a top-level `AND` condition, becomes `1`; the operand is fetched under a private alias
+and rows are kept where `preg_match('#p#i')` agrees, which is what core's callback does. `LIMIT`,
+`OFFSET`, `DISTINCT` and the pager's `SELECT COUNT(*) FROM (...)` are applied after the filter, since
+applying them to the superset would answer wrong. REGEXP under `OR` or `NOT (...)`, beside an
+aggregate, or in a write is refused by name. `MD5(col) AS a` and `SUBSTRING_INDEX(col, d, n) AS a`
+in the top-level select list are fetched as the column and computed on the value; a negative
+`SUBSTRING_INDEX` count reads from the right, as MySQL does. Anywhere else the engine still refuses
+them.
 `SELECT 'GREATEST('` survives it. Functions with no exact builtin are absent
 from the map; mapping one onto a function that behaves differently produces silent wrong answers.
 

@@ -148,6 +148,10 @@ final class Statement extends StatementBase implements StatementInterface
 
 		$listText = $matches[1][0][0];
 		$listAt = (int) $matches[1][0][1];
+		// a union of batches answers IN; for NOT IN it keeps every row missing from ANY batch
+		if (preg_match('/\bNOT\s+IN\s*\(\s*$/i', substr($query, 0, $listAt)) === 1) {
+			return null;
+		}
 		$names = array_map(
 			static fn(string $n): string => ltrim(trim($n), ':'),
 			explode(',', $listText),
@@ -176,13 +180,14 @@ final class Statement extends StatementBase implements StatementInterface
 	 * original result set. `rowCount` is summed; a SELECT writes nothing, so there is no buffered
 	 * write to reconcile and `bufferIndex` stays whatever the last batch reported.
 	 */
-	private function runSplitInList(array $args): array
+	private function runSplitInList(array $args, ?string $query = null): array
 	{
-		$point = self::splitPointFor($this->queryString, $args);
+		$query ??= $this->queryString;
+		$point = self::splitPointFor($query, $args);
 		if ($point === null) {
 			// unreachable through execute(), which checks first; kept so a future caller cannot
 			// silently get an unsplit oversized statement
-			return $this->driverConnection->runStatement($this->queryString, $args);
+			return $this->driverConnection->runStatement($query, $args);
 		}
 
 		$keyOf = static fn(string $name): string => array_key_exists($name, $args)
@@ -248,10 +253,12 @@ final class Statement extends StatementBase implements StatementInterface
 
 		try {
 			$normalized = self::normalizeArgs($args);
+			// folded first, so only a list JSON cannot carry ever reaches the batching below
+			[$query, $normalized] = Connection::collapseInLists($this->queryString, $normalized);
 			$outcome =
-				self::splitPointFor($this->queryString, $normalized) !== null
-					? $this->runSplitInList($normalized)
-					: $this->driverConnection->runStatement($this->queryString, $normalized);
+				self::splitPointFor($query, $normalized) !== null
+					? $this->runSplitInList($normalized, $query)
+					: $this->driverConnection->runStatement($query, $normalized);
 		} catch (Exception $e) {
 			$this->dispatchStatementExecutionFailureEvent($startEvent, $e);
 			throw $e;

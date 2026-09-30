@@ -152,14 +152,20 @@ class Connection extends SqliteDriverConnection
 	private const LIKE_BINARY_MARKER = '/*cfw:l2g*/';
 
 	/**
+	 * Marks a plain LIKE placeholder, so an oversized pattern can be widened rather than refused.
+	 *
+	 * The pattern itself is untouched; only its length is checked.
+	 */
+	private const LIKE_MARKER = '/*cfw:like*/';
+
+	/**
 	 * Longest LIKE or GLOB pattern ctx.storage.sql will accept, in bytes.
 	 *
 	 * Measured, not from documentation: 50 bytes succeeds and 51 fails with
 	 * "LIKE or GLOB pattern too complex: SQLITE_ERROR". SQLite's own default
 	 * SQLITE_MAX_LIKE_PATTERN_LENGTH is 50,000, so this is the runtime lowering it
-	 * by three orders of magnitude. It applies to plain LIKE as well, which this
-	 * driver cannot intercept -- a Views "contains" filter on a long search string
-	 * will fail in the engine.
+	 * by three orders of magnitude. It applies to plain LIKE as well, so both forms are marked,
+	 * and an oversized pattern in a plain SELECT is widened and re-filtered in PHP.
 	 */
 	public const MAX_LIKE_PATTERN_BYTES = 50;
 
@@ -415,7 +421,25 @@ class Connection extends SqliteDriverConnection
 		// the core driver supplies IF/GREATEST/LEAST/RAND through
 		// PDO::sqliteCreateFunction(), which does not exist here, so the four that
 		// have an exact builtin equivalent are renamed to it
-		return SqlAnalyzer::rewriteFunctions(parent::preprocessStatement($query, $options));
+		$sql = SqlAnalyzer::rewriteDateFunctions(
+			SqlAnalyzer::rewriteFunctions(parent::preprocessStatement($query, $options)),
+		);
+		// MySQL-only statement shapes, refused by name rather than as an engine syntax error
+		if (preg_match('/^\s*UPDATE\b(?:(?!\bSET\b).)*\bJOIN\b/is', $sql) === 1) {
+			throw new InvalidQueryException(
+				'UPDATE ... JOIN is MySQL syntax SQLite does not accept. Rewrite it as UPDATE ... FROM, or as a correlated subquery: ' .
+					$sql,
+			);
+		}
+		if (
+			preg_match('/^\s*ALTER\s+TABLE\b.*\bADD\s+(?:UNIQUE\s+)?(?:INDEX|KEY)\b/is', $sql) === 1
+		) {
+			throw new InvalidQueryException(
+				'ALTER TABLE ... ADD INDEX is MySQL syntax. Use the schema API (addIndex) or CREATE INDEX: ' .
+					$sql,
+			);
+		}
+		return $sql;
 	}
 
 	/**
@@ -448,6 +472,15 @@ class Connection extends SqliteDriverConnection
 			];
 		}
 
+		if ($operator === 'LIKE' || $operator === 'NOT LIKE') {
+			$mapped = parent::mapConditionOperator($operator) ?? [];
+			return [
+				'operator' => $mapped['operator'] ?? $operator,
+				'prefix' => self::LIKE_MARKER,
+				'postfix' => $mapped['postfix'] ?? " ESCAPE '\\'",
+			];
+		}
+
 		return parent::mapConditionOperator($operator);
 	}
 
@@ -469,7 +502,10 @@ class Connection extends SqliteDriverConnection
 	 */
 	private function translateLikeBinary(string &$sql, array &$params): array
 	{
-		if (!str_contains($sql, self::LIKE_BINARY_MARKER)) {
+		if (
+			!str_contains($sql, self::LIKE_BINARY_MARKER) &&
+			!str_contains($sql, self::LIKE_MARKER)
+		) {
 			return [];
 		}
 
@@ -477,11 +513,17 @@ class Connection extends SqliteDriverConnection
 		// widenOversizedPattern(). Empty is the normal case and costs nothing
 		$postFilters = [];
 		$widenable = $this->patternWideningAllowed($sql);
-		$marker = preg_quote(self::LIKE_BINARY_MARKER, '/');
+		$markers =
+			preg_quote(self::LIKE_BINARY_MARKER, '/') . '|' . preg_quote(self::LIKE_MARKER, '/');
 		$rewritten = preg_replace_callback(
-			'/' . $marker . '\s*(:[A-Za-z0-9_]+|\?)/',
+			'/(\bNOT\s+(?:LIKE|GLOB)\s+)?(' . $markers . ')\s*(:[A-Za-z0-9_]+|\?)/i',
 			function (array $m) use (&$params, &$postFilters, $widenable, $sql) {
-				$placeholder = $m[1];
+				$plain = $m[2] === self::LIKE_MARKER;
+				$placeholder = $m[3];
+				// a negated pattern cannot be widened: NOT over a superset is a SUBSET, and no
+				// filter can bring back rows the engine already dropped
+				$negated = $m[1] !== '';
+				$kept = $m[1];
 				if ($placeholder === '?') {
 					// Condition::compile() always emits named placeholders, so reaching
 					// this means the marker arrived from somewhere else and the argument
@@ -516,6 +558,36 @@ class Connection extends SqliteDriverConnection
 						),
 					);
 				}
+				if ($plain) {
+					if (strlen($params[$key]) <= self::MAX_LIKE_PATTERN_BYTES) {
+						return $kept . $placeholder;
+					}
+					$widened =
+						$widenable && !$negated
+							? SqlAnalyzer::widenLikePattern(
+								$params[$key],
+								self::MAX_LIKE_PATTERN_BYTES,
+								8,
+								false,
+							)
+							: null;
+					if ($widened === null) {
+						throw new InvalidQueryException(
+							sprintf(
+								'This LIKE pattern is %d bytes, and ctx.storage.sql refuses any LIKE or GLOB pattern over %d bytes ("pattern too complex"). It is widened and re-filtered only inside a plain SELECT with no LIMIT, aggregate or NOT. Shorten the search term.',
+								strlen($params[$key]),
+								self::MAX_LIKE_PATTERN_BYTES,
+							),
+						);
+					}
+					$postFilters[] = [
+						'column' => self::likeColumnFor($sql, $placeholder),
+						'pattern' => $params[$key],
+						'nocase' => true,
+					];
+					$params[$key] = $widened;
+					return $kept . $placeholder;
+				}
 				$glob = SqlAnalyzer::likeToGlob($params[$key]);
 				// Measured against ctx.storage.sql: 50 bytes passes, 51 fails with
 				// "LIKE or GLOB pattern too complex: SQLITE_ERROR". The check is on the
@@ -525,9 +597,13 @@ class Connection extends SqliteDriverConnection
 				// safe. Refusing here names the cause; letting it through surfaces the
 				// engine's message from somewhere unrelated.
 				if (strlen($glob) > self::MAX_LIKE_PATTERN_BYTES) {
-					$widened = $widenable
-						? SqlAnalyzer::widenLikePattern($params[$key], self::MAX_LIKE_PATTERN_BYTES)
-						: null;
+					$widened =
+						$widenable && !$negated
+							? SqlAnalyzer::widenLikePattern(
+								$params[$key],
+								self::MAX_LIKE_PATTERN_BYTES,
+							)
+							: null;
 					if ($widened === null) {
 						throw new InvalidQueryException(
 							sprintf(
@@ -543,12 +619,13 @@ class Connection extends SqliteDriverConnection
 					$postFilters[] = [
 						'column' => self::likeColumnFor($sql, $placeholder),
 						'pattern' => $params[$key],
+						'nocase' => false,
 					];
 					$params[$key] = SqlAnalyzer::likeToGlob($widened);
-					return $placeholder;
+					return $kept . $placeholder;
 				}
 				$params[$key] = $glob;
-				return $placeholder;
+				return $kept . $placeholder;
 			},
 			$sql,
 		);
@@ -571,7 +648,7 @@ class Connection extends SqliteDriverConnection
 			if ($filter['column'] === null) {
 				throw new InvalidQueryException(
 					sprintf(
-						'A LIKE BINARY pattern is over the %d-byte ceiling and the column it applies to could not be identified, so it cannot be widened and re-filtered: %s',
+						'A LIKE pattern is over the %d-byte ceiling and the column it applies to could not be identified, so it cannot be widened and re-filtered: %s',
 						self::MAX_LIKE_PATTERN_BYTES,
 						$sql,
 					),
@@ -612,7 +689,7 @@ class Connection extends SqliteDriverConnection
 	 * The column an oversized LIKE applies to, or NULL when it cannot be read off the statement.
 	 *
 	 * Read from the SQL rather than guessed, and the alias is dropped because the ROW comes back
-	 * keyed by the select-list name. Anything more elaborate than `[table].[column] LIKE :name`
+	 * keyed by the select-list name. Anything more elaborate than `"table"."column" LIKE :name`
 	 * returns NULL and the caller refuses -- which is the right outcome: a wrong column would drop
 	 * every row and look like an empty result set.
 	 */
@@ -620,9 +697,12 @@ class Connection extends SqliteDriverConnection
 	{
 		$quoted = preg_quote($placeholder, '/');
 		$pattern =
-			'/(?:\[?([A-Za-z0-9_]+)\]?\.)?\[?([A-Za-z0-9_]+)\]?\s+LIKE\s+(?:BINARY\s+)?' .
+			'/(?:[\["]?([A-Za-z0-9_]+)[\]"]?\.)?[\["]?([A-Za-z0-9_]+)[\]"]?\s+(?:LIKE|GLOB)\s+(?:BINARY\s+)?' .
+			'(?:' .
 			preg_quote(self::LIKE_BINARY_MARKER, '/') .
-			'?\s*' .
+			'|' .
+			preg_quote(self::LIKE_MARKER, '/') .
+			')?\s*' .
 			$quoted .
 			'\b/i';
 		if (preg_match($pattern, $sql, $m) !== 1) {
@@ -656,7 +736,7 @@ class Connection extends SqliteDriverConnection
 		foreach ($filters as $filter) {
 			$regexes[] = [
 				'column' => $filter['column'],
-				'regex' => self::likeToRegex($filter['pattern']),
+				'regex' => self::likeToRegex($filter['pattern'], $filter['nocase'] ?? false),
 			];
 		}
 
@@ -682,12 +762,13 @@ class Connection extends SqliteDriverConnection
 	}
 
 	/**
-	 * One LIKE pattern as a case-SENSITIVE anchored regex.
+	 * One LIKE pattern as an anchored regex.
 	 *
-	 * Case-sensitive because the marker this whole path exists for is LIKE **BINARY**; a
-	 * case-insensitive filter here would keep rows the engine's own GLOB would have dropped.
+	 * Case-sensitive for LIKE BINARY, which the engine ran as GLOB. For plain LIKE the flag is `i`
+	 * without `u`, which folds ASCII only: SQLite's own LIKE is case-insensitive for ASCII and
+	 * case-sensitive beyond it, so a Unicode-aware fold would keep rows the engine drops.
 	 */
-	private static function likeToRegex(string $pattern): string
+	private static function likeToRegex(string $pattern, bool $nocase = false): string
 	{
 		$out = '';
 		$length = strlen($pattern);
@@ -704,7 +785,7 @@ class Connection extends SqliteDriverConnection
 			}
 		}
 
-		return '/^' . $out . '$/sD';
+		return '/^' . $out . '$/sD' . ($nocase ? 'i' : '');
 	}
 
 	/**
@@ -1042,14 +1123,89 @@ class Connection extends SqliteDriverConnection
 	 * @throws SqlErrorException
 	 *   If SQLite rejected the statement.
 	 */
+	public static function collapseInLists(string $sql, array $params): array
+	{
+		if (count($params) <= self::MAX_BOUND_PARAMETERS) {
+			return [$sql, $params];
+		}
+		$pattern = '/\bIN\s*\(\s*(:[A-Za-z0-9_]+(?:\s*,\s*:[A-Za-z0-9_]+)+)\s*\)/i';
+		if (preg_match_all($pattern, $sql, $matches, PREG_OFFSET_CAPTURE) === 0) {
+			return [$sql, $params];
+		}
+		$lists = $matches[1];
+		usort($lists, static fn(array $a, array $b): int => strlen($b[0]) <=> strlen($a[0]));
+		$folds = [];
+		foreach ($lists as $i => [$text, $at]) {
+			if (count($params) <= self::MAX_BOUND_PARAMETERS) {
+				break;
+			}
+			$names = array_map(
+				static fn(string $n): string => ltrim(trim($n), ':'),
+				explode(',', $text),
+			);
+			$values = [];
+			foreach ($names as $name) {
+				$key = array_key_exists(':' . $name, $params) ? ':' . $name : $name;
+				if (!array_key_exists($key, $params)) {
+					continue 2;
+				}
+				$value = $params[$key];
+				if (!($value === null || is_int($value) || is_float($value) || is_string($value))) {
+					continue 2;
+				}
+				$values[] = $value;
+			}
+			$json = json_encode($values);
+			if ($json === false) {
+				continue;
+			}
+			foreach ($names as $name) {
+				unset($params[':' . $name], $params[$name]);
+			}
+			$slot = 'cfw_in_' . $i;
+			$params[':' . $slot] = $json;
+			$folds[] = [$at, strlen($text), 'SELECT value FROM json_each(:' . $slot . ')'];
+		}
+		// right to left, so earlier offsets stay valid
+		usort($folds, static fn(array $a, array $b): int => $b[0] <=> $a[0]);
+		foreach ($folds as [$at, $length, $with]) {
+			$sql = substr($sql, 0, $at) . $with . substr($sql, $at + $length);
+		}
+		return [$sql, $params];
+	}
+
+	/**
+	 * Folds oversized placeholder `IN()` lists into one bound JSON array each.
+	 *
+	 * The host caps a statement at 100 bound parameters, and a menu rebuild on a migrated site runs
+	 * `id NOT IN (...)` over 400 links. `IN (SELECT value FROM json_each(:list))` is the same set
+	 * in one parameter, so it is exact for `IN` and `NOT IN` alike, under any ordering, limit or
+	 * aggregate, which batching cannot promise. Largest lists first, until the statement fits. A
+	 * list holding a value JSON cannot carry (an envelope, invalid UTF-8) is left alone.
+	 *
+	 * @return array{0: string, 1: array}
+	 *   The statement and its parameters, unchanged when nothing needed folding.
+	 */
 	public function runStatement(string $sql, array $params): array
 	{
+		[$sql, $params] = self::collapseInLists($sql, $params);
 		// before classification and before buffering, so every later reader of the
 		// statement sees the translated form
 		$likeFilters = $this->translateLikeBinary($sql, $params);
+		// REGEXP, MD5() and SUBSTRING_INDEX() have no builtin, so they are answered in PHP
+		$evaluation = PhpEvaluation::plan($sql, $params);
+		if ($evaluation !== null) {
+			$sql = $evaluation['sql'];
+		}
 		// BEFORE the write reaches the buffer, so a transaction is refused at the statement that
 		// is too large rather than at the commit that replays it -- the engine's own message names
 		// neither the column nor the cap, and by commit time the statement is one of many
+		// a cache entry past the record cap becomes a miss, not a failed request: the entries the
+		// write names are deleted, so no older copy is served, and whoever asked recomputes the value
+		$evict = self::oversizedCacheWrite($sql, $params);
+		if ($evict !== null) {
+			return $this->runStatement(...$evict);
+		}
 		self::refuseOversizedParameter($sql, $params);
 
 		$kind = SqlAnalyzer::classify($sql);
@@ -1090,14 +1246,18 @@ class Connection extends SqliteDriverConnection
 			$this->idStride >= 2 &&
 			preg_match('/^\s*(?:CREATE|DROP|ALTER)\b/i', $sql) !== 1
 		) {
-			return self::filterOutcome($this->runPartitionedWrite($sql, $params), $likeFilters);
+			return self::filterOutcome(
+				$this->runPartitionedWrite($sql, $params),
+				$likeFilters,
+				$evaluation,
+			);
 		}
 
 		if ($this->buffer === null) {
 			// ONE exit for every read path, so a widened pattern cannot reach a caller unfiltered
 			// through a branch somebody forgot. `$likeFilters` is empty on every statement that
 			// did not need widening, and empty on every write by construction
-			return self::filterOutcome($this->runDirect($sql, $params), $likeFilters);
+			return self::filterOutcome($this->runDirect($sql, $params), $likeFilters, $evaluation);
 		}
 
 		if ($kind === SqlAnalyzer::WRITE) {
@@ -1132,10 +1292,68 @@ class Connection extends SqliteDriverConnection
 		}
 
 		if ($this->buffer->isEmpty() || !$this->buffer->touches(SqlAnalyzer::readTables($sql))) {
-			return self::filterOutcome($this->runDirect($sql, $params), $likeFilters);
+			return self::filterOutcome($this->runDirect($sql, $params), $likeFilters, $evaluation);
 		}
 
-		return self::filterOutcome($this->runSpeculativeRead($sql, $params), $likeFilters);
+		return self::filterOutcome(
+			$this->runSpeculativeRead($sql, $params),
+			$likeFilters,
+			$evaluation,
+		);
+	}
+
+	/**
+	 * The DELETE that stands in for an INSERT into a `cache_*` table carrying a value past the cap.
+	 *
+	 * Open Y's views data serialises to 3.8 MB, and refusing that write failed every page that asked
+	 * for it. A cache set is optional; a stale entry is not, so the rows the write names by `cid` are
+	 * removed rather than left behind. Null for any other statement, which keeps the refusal.
+	 *
+	 * @return array{0: string, 1: array}|null
+	 *   The DELETE and its parameters, or NULL when the statement is not a cache write.
+	 */
+	private static function oversizedCacheWrite(string $sql, array $params): ?array
+	{
+		$oversized = false;
+		foreach ($params as $value) {
+			if (is_string($value) && strlen($value) > self::MAX_RECORD_BYTES) {
+				$oversized = true;
+				break;
+			}
+		}
+		if (
+			!$oversized ||
+			!preg_match(
+				'/^\s*(?:INSERT|REPLACE)\b.*?\bINTO\s+"?(cache_[a-z0-9_]+)"?\s*\(([^)]*)\)\s*VALUES\s*(.*)$/is',
+				$sql,
+				$m,
+			)
+		) {
+			return null;
+		}
+		$columns = array_map(
+			static fn(string $c): string => trim($c, " \"`\t\n"),
+			explode(',', $m[2]),
+		);
+		$at = array_search('cid', $columns, true);
+		if ($at === false) {
+			return null;
+		}
+		$cids = [];
+		preg_match_all('/\(([^()]*)\)/', $m[3], $tuples);
+		foreach ($tuples[1] as $tuple) {
+			$name = trim(explode(',', $tuple)[$at] ?? '');
+			if (array_key_exists($name, $params)) {
+				$cids[] = $params[$name];
+			}
+		}
+		if ($cids === []) {
+			return null;
+		}
+		return [
+			'DELETE FROM "' . $m[1] . '" WHERE "cid" IN (SELECT value FROM json_each(:cfw_evict))',
+			[':cfw_evict' => json_encode($cids)],
+		];
 	}
 
 	/**
@@ -1175,12 +1393,17 @@ class Connection extends SqliteDriverConnection
 	 * `rowCount` is left alone: a SELECT writes nothing, so the field carries no meaning that the
 	 * filter could invalidate, and `Statement` resolves its own count from the rows it received.
 	 */
-	private static function filterOutcome(array $outcome, array $filters): array
-	{
-		if ($filters === []) {
-			return $outcome;
+	private static function filterOutcome(
+		array $outcome,
+		array $filters,
+		?array $evaluation = null,
+	): array {
+		if ($filters !== []) {
+			$outcome['rows'] = self::applyLikeFilters($outcome['rows'], $filters);
 		}
-		$outcome['rows'] = self::applyLikeFilters($outcome['rows'], $filters);
+		if ($evaluation !== null) {
+			$outcome['rows'] = PhpEvaluation::apply($outcome['rows'], $evaluation);
+		}
 
 		return $outcome;
 	}

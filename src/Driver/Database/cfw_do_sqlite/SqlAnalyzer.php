@@ -316,6 +316,250 @@ final class SqlAnalyzer
 	}
 
 	/**
+	 * MySQL date functions, rewritten onto SQLite's date builtins.
+	 *
+	 * Reporting modules store MySQL-dialect SQL (`HOUR(FROM_UNIXTIME(created))`,
+	 * `DATE_SUB(NOW(), INTERVAL 7 DAY)`), and each of these has an exact builtin spelling. Times
+	 * are UTC, which is what `'unixepoch'` and `'now'` mean in SQLite; a MySQL server set to a
+	 * local zone would differ by its offset. A call whose arguments cannot be translated -- a
+	 * non-literal format string, an interval unit SQLite lacks, a format specifier with no
+	 * strftime equivalent -- is left as written so the engine refuses it by name.
+	 */
+	private const DATE_FUNCTIONS = [
+		'from_unixtime',
+		'unix_timestamp',
+		'curdate',
+		'now',
+		'hour',
+		'minute',
+		'second',
+		'year',
+		'month',
+		'day',
+		'dayofmonth',
+		'dayofweek',
+		'weekday',
+		'date_format',
+		'date_add',
+		'date_sub',
+	];
+
+	/**
+	 * MySQL format specifiers with an identical strftime spelling.
+	 */
+	private const DATE_FORMATS = [
+		'Y' => '%Y',
+		'm' => '%m',
+		'd' => '%d',
+		'H' => '%H',
+		'i' => '%M',
+		's' => '%S',
+		'S' => '%S',
+		'j' => '%j',
+		'w' => '%w',
+		'T' => '%H:%M:%S',
+		'%' => '%%',
+	];
+
+	/**
+	 * Rewrites MySQL date functions outside literals, comments and quoted identifiers.
+	 *
+	 * @param string $sql
+	 *   The statement.
+	 *
+	 * @return string
+	 *   The statement with every translatable date call replaced, innermost first.
+	 */
+	public static function rewriteDateFunctions(string $sql): string
+	{
+		$names = implode('|', self::DATE_FUNCTIONS);
+		if (preg_match('/\b(?:' . $names . ')\s*\(/i', $sql) !== 1) {
+			return $sql;
+		}
+
+		// offsets stay aligned: anything that is not plain SQL becomes filler of the same length
+		$mask = '';
+		foreach (self::tokenize($sql) as [$kind, $text]) {
+			$mask .= $kind === self::TOKEN_PLAIN ? $text : str_repeat("\x01", strlen($text));
+		}
+
+		$out = '';
+		$pos = 0;
+		$length = strlen($mask);
+		while (
+			preg_match(
+				'/(?<![A-Za-z0-9_.])(' . $names . ')\s*\(/i',
+				$mask,
+				$m,
+				PREG_OFFSET_CAPTURE,
+				$pos,
+			) === 1
+		) {
+			$start = $m[0][1];
+			$open = $start + strlen($m[0][0]) - 1;
+			$depth = 0;
+			$close = null;
+			$args = [];
+			$argStart = $open + 1;
+			for ($i = $open; $i < $length; $i++) {
+				$c = $mask[$i];
+				if ($c === '(') {
+					$depth++;
+				} elseif ($c === ')') {
+					$depth--;
+					if ($depth === 0) {
+						$close = $i;
+						break;
+					}
+				} elseif ($c === ',' && $depth === 1) {
+					$args[] = substr($sql, $argStart, $i - $argStart);
+					$argStart = $i + 1;
+				}
+			}
+			if ($close === null) {
+				break;
+			}
+			$last = substr($sql, $argStart, $close - $argStart);
+			if ($args !== [] || trim($last) !== '') {
+				$args[] = $last;
+			}
+			$args = array_map(
+				static fn(string $a): string => self::rewriteDateFunctions(trim($a)),
+				$args,
+			);
+			$replacement = self::dateCall(strtolower($m[1][0]), $args);
+			$out .=
+				substr($sql, $pos, $start - $pos) .
+				($replacement ?? substr($sql, $start, $close + 1 - $start));
+			$pos = $close + 1;
+		}
+
+		return $out . substr($sql, $pos);
+	}
+
+	/**
+	 * The SQLite spelling of one date call, or NULL when it has none.
+	 *
+	 * @param string $name
+	 *   The MySQL function name.
+	 * @param string[] $args
+	 *   The arguments, already rewritten.
+	 *
+	 * @return string|null
+	 *   The SQLite expression, or null for a function with no spelling.
+	 */
+	private static function dateCall(string $name, array $args): ?string
+	{
+		$n = count($args);
+		$part = static fn(string $spec, string $a): string => "CAST(strftime('" .
+			$spec .
+			"', " .
+			$a .
+			') AS INTEGER)';
+		switch ($name) {
+			case 'from_unixtime':
+				if ($n === 1) {
+					return 'datetime(' . $args[0] . ", 'unixepoch')";
+				}
+				$format = $n === 2 ? self::strftimeFormat($args[1]) : null;
+				return $format === null
+					? null
+					: 'strftime(' . $format . ', ' . $args[0] . ", 'unixepoch')";
+
+			case 'unix_timestamp':
+				return match ($n) {
+					0 => "CAST(strftime('%s', 'now') AS INTEGER)",
+					1 => "CAST(strftime('%s', " . $args[0] . ') AS INTEGER)',
+					default => null,
+				};
+
+			case 'curdate':
+				return $n === 0 ? "date('now')" : null;
+
+			case 'now':
+				return $n === 0 ? "datetime('now')" : null;
+
+			case 'hour':
+				return $n === 1 ? $part('%H', $args[0]) : null;
+
+			case 'minute':
+				return $n === 1 ? $part('%M', $args[0]) : null;
+
+			case 'second':
+				return $n === 1 ? $part('%S', $args[0]) : null;
+
+			case 'year':
+				return $n === 1 ? $part('%Y', $args[0]) : null;
+
+			case 'month':
+				return $n === 1 ? $part('%m', $args[0]) : null;
+
+			case 'day':
+			case 'dayofmonth':
+				return $n === 1 ? $part('%d', $args[0]) : null;
+
+			case 'dayofweek':
+				// MySQL counts Sunday as 1, strftime as 0
+				return $n === 1 ? '(' . $part('%w', $args[0]) . ' + 1)' : null;
+
+			case 'weekday':
+				// MySQL counts Monday as 0
+				return $n === 1 ? '((' . $part('%w', $args[0]) . ' + 6) % 7)' : null;
+
+			case 'date_format':
+				$format = $n === 2 ? self::strftimeFormat($args[1]) : null;
+				return $format === null ? null : 'strftime(' . $format . ', ' . $args[0] . ')';
+
+			case 'date_add':
+			case 'date_sub':
+				if (
+					$n !== 2 ||
+					preg_match(
+						'/^INTERVAL\s+(.+?)\s+(SECOND|MINUTE|HOUR|DAY|MONTH|YEAR)S?$/is',
+						$args[1],
+						$iv,
+					) !== 1
+				) {
+					return null;
+				}
+				$sign = $name === 'date_sub' ? '-' : '+';
+				$unit = strtolower($iv[2]) . 's';
+				$amount = trim($iv[1]);
+				$modifier =
+					preg_match('/^\d+$/', $amount) === 1
+						? "'" . $sign . $amount . ' ' . $unit . "'"
+						: "'" . $sign . "' || (" . $amount . ") || ' " . $unit . "'";
+				return 'datetime(' . $args[0] . ', ' . $modifier . ')';
+		}
+		return null;
+	}
+
+	/**
+	 * A MySQL format literal as a strftime literal, or NULL when any specifier has no equivalent.
+	 */
+	private static function strftimeFormat(string $literal): ?string
+	{
+		if (preg_match("/^'((?:[^']|'')*)'$/s", $literal, $m) !== 1) {
+			return null;
+		}
+		$format = str_replace("''", "'", $m[1]);
+		$out = '';
+		$length = strlen($format);
+		for ($i = 0; $i < $length; $i++) {
+			if ($format[$i] !== '%') {
+				$out .= $format[$i];
+				continue;
+			}
+			$spec = $format[++$i] ?? '';
+			if (!isset(self::DATE_FORMATS[$spec])) {
+				return null;
+			}
+			$out .= self::DATE_FORMATS[$spec];
+		}
+		return "'" . str_replace("'", "''", $out) . "'";
+	}
+
+	/**
 	 * Reduces an identifier to a comparable table name.
 	 *
 	 * @param string $raw
@@ -516,6 +760,9 @@ final class SqlAnalyzer
 	 *   The ceiling the translated pattern must fit.
 	 * @param int $minRetainedBytes
 	 *   How much of the original must survive for the widened form to still be selective.
+	 * @param bool $glob
+	 *   Whether the ceiling applies to the GLOB translation (LIKE BINARY) or to the LIKE pattern
+	 *   itself (plain LIKE, which reaches the engine untranslated).
 	 *
 	 * @return string|null
 	 *   A wider LIKE pattern whose GLOB form fits, or NULL when no prefix does so while retaining
@@ -525,8 +772,10 @@ final class SqlAnalyzer
 		string $pattern,
 		int $maxGlobBytes,
 		int $minRetainedBytes = 8,
+		bool $glob = true,
 	): ?string {
-		if (strlen(self::likeToGlob($pattern)) <= $maxGlobBytes) {
+		$size = static fn(string $p): int => strlen($glob ? self::likeToGlob($p) : $p);
+		if ($size($pattern) <= $maxGlobBytes) {
 			return $pattern;
 		}
 		// one byte is reserved for the '%' this appends
@@ -542,7 +791,7 @@ final class SqlAnalyzer
 				continue;
 			}
 			$candidate = $head . '%';
-			if (strlen(self::likeToGlob($candidate)) <= $maxGlobBytes) {
+			if ($size($candidate) <= $maxGlobBytes) {
 				return $candidate;
 			}
 		}

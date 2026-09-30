@@ -1077,6 +1077,298 @@ ok(
 	$expandedMessage,
 );
 
+// --- plain LIKE past the ceiling ----------------------------------------------
+//
+// The host refuses any LIKE pattern over 50 bytes, and a Views "contains" filter or a search_api_db
+// key reaches it untranslated. Inside a plain SELECT the pattern is widened and the original
+// re-applied in PHP with SQLite's ASCII-only case folding.
+[$plHost, $plConnection] = connect();
+$plConnection->query('CREATE TABLE {pl} ([id] INTEGER PRIMARY KEY, [name] TEXT)');
+$prefix = str_repeat('x', 55);
+foreach (
+	[$prefix . 'MATCH', $prefix . 'match tail', $prefix . 'matcx', 'short match']
+	as $i => $name
+) {
+	$plConnection
+		->insert('pl')
+		->fields(['id' => $i + 1, 'name' => $name])
+		->execute();
+}
+$plRows = function (string $pattern, string $operator = 'LIKE') use ($plConnection) {
+	return $plConnection
+		->select('pl', 'p')
+		->fields('p', ['id', 'name'])
+		->condition('name', $pattern, $operator)
+		->orderBy('id')
+		->execute()
+		->fetchCol();
+};
+ok('a short plain LIKE runs as before, case-insensitively', $plRows('%MATCH%') === ['1', '2', '4']);
+ok(
+	'the plain marker never reaches the host',
+	!str_contains(implode(' ', $plHost->statements), 'cfw:like'),
+);
+$plOversized = '%' . $prefix . 'match%';
+$plGot = null;
+$plError = '';
+try {
+	$plGot = $plRows($plOversized);
+} catch (Throwable $e) {
+	$plError = $e->getMessage();
+}
+ok(
+	'an oversized plain LIKE in a SELECT is widened rather than refused',
+	$plGot === ['1', '2'],
+	$plError . var_export($plGot, true),
+);
+$plNot = '';
+try {
+	$plRows($plOversized, 'NOT LIKE');
+} catch (InvalidQueryException $e) {
+	$plNot = $e->getMessage();
+}
+ok(
+	'an oversized NOT LIKE is refused, because NOT over a superset loses rows',
+	$plNot !== '',
+	$plNot,
+);
+$plCount = '';
+try {
+	$plConnection
+		->select('pl', 'p')
+		->condition('name', $plOversized, 'LIKE')
+		->countQuery()
+		->execute()
+		->fetchField();
+} catch (InvalidQueryException $e) {
+	$plCount = $e->getMessage();
+}
+ok(
+	'an oversized plain LIKE under COUNT is refused and names the ceiling',
+	str_contains($plCount, '50 bytes'),
+	$plCount,
+);
+$lbWide = null;
+$lbWideError = '';
+try {
+	$lbWide = $lbConnection
+		->select('lb', 'l')
+		->fields('l', ['name'])
+		->condition(
+			'name',
+			'Alpha%' . str_repeat('_', 0) . '%' . str_repeat('?', 16) . '%',
+			'LIKE BINARY',
+		)
+		->execute()
+		->fetchCol();
+} catch (Throwable $e) {
+	$lbWideError = $e->getMessage();
+}
+ok(
+	'an oversized LIKE BINARY in a SELECT finds its column and widens',
+	is_array($lbWide),
+	$lbWideError,
+);
+
+// --- REGEXP, MD5() and SUBSTRING_INDEX() in PHP --------------------------------
+//
+// Core's SQLite driver registers these as PHP callbacks, which ctx.storage.sql cannot, and FakeHost's
+// PDO SQLite has none either, so a statement reaching it with REGEXP fails the way the host would.
+// Views' regular-expression filter emits REGEXP and a pager COUNT around it.
+[$rxHost, $rxConnection] = connect();
+$rxConnection->query(
+	'CREATE TABLE {rx} ([id] INTEGER PRIMARY KEY, [title] TEXT, [status] INTEGER)',
+);
+foreach (
+	[[1, 'Alpha one', 1], [2, 'beta two', 1], [3, 'ALPHA three', 0], [4, null, 1], [5, 'gamma', 1]]
+	as [$id, $title, $status]
+) {
+	$rxConnection
+		->insert('rx')
+		->fields(['id' => $id, 'title' => $title, 'status' => $status])
+		->execute();
+}
+$rxQuery = function (string $pattern, string $operator = 'REGEXP') use ($rxConnection) {
+	return $rxConnection
+		->select('rx', 'r')
+		->fields('r', ['id'])
+		->condition('title', $pattern, $operator)
+		->orderBy('id');
+};
+$rxIds = fn($query) => array_map('intval', $query->execute()->fetchCol());
+ok('REGEXP matches case-insensitively, as core does', $rxIds($rxQuery('^alpha')) === [1, 3]);
+ok(
+	'NOT REGEXP inverts it and still drops a NULL column',
+	$rxIds($rxQuery('^alpha', 'NOT REGEXP')) === [2, 5],
+);
+ok(
+	'REGEXP combines with an ordinary AND condition',
+	$rxIds($rxQuery('^alpha')->condition('status', 1)) === [1],
+);
+ok('LIMIT applies after the filter', $rxIds($rxQuery('^alpha')->range(0, 1)) === [1]);
+ok('OFFSET applies after the filter', $rxIds($rxQuery('^alpha')->range(1, 1)) === [3]);
+ok(
+	'the pager count is taken after the filter',
+	(int) $rxQuery('^alpha')->countQuery()->execute()->fetchField() === 2,
+);
+$rxRow = $rxQuery('two')->execute()->fetchAssoc();
+ok(
+	'a filtered column absent from the select list is fetched and then removed',
+	$rxRow === ['id' => '2'] || $rxRow === ['id' => 2],
+	var_export($rxRow, true),
+);
+ok(
+	'DISTINCT is applied after the private column is removed',
+	array_map(
+		'intval',
+		$rxConnection
+			->select('rx', 'r')
+			->fields('r', ['status'])
+			->distinct()
+			->condition('title', 'a', 'REGEXP')
+			->orderBy('status')
+			->execute()
+			->fetchCol(),
+	) === [0, 1],
+);
+ok(
+	'REGEXP over an expression, as the Views Combine filter writes it',
+	array_map(
+		'intval',
+		$rxConnection
+			->select('rx', 'r')
+			->fields('r', ['id'])
+			->where("CONCAT_WS(' ', [title], [status]) REGEXP :p", [':p' => 'one 1$'])
+			->execute()
+			->fetchCol(),
+	) === [1],
+);
+ok(
+	'REGEXP never reaches the host',
+	!str_contains(strtoupper(implode(' ', $rxHost->statements)), 'REGEXP'),
+);
+$rxOr = '';
+try {
+	$rxConnection
+		->select('rx', 'r')
+		->fields('r', ['id'])
+		->condition(
+			$rxConnection
+				->condition('OR')
+				->condition('title', '^alpha', 'REGEXP')
+				->condition('status', 0),
+		)
+		->execute();
+} catch (InvalidQueryException $e) {
+	$rxOr = $e->getMessage();
+}
+ok('REGEXP inside an OR is refused by name', str_contains($rxOr, 'inside an OR'), $rxOr);
+$rxWrite = '';
+try {
+	$rxConnection->query('DELETE FROM {rx} WHERE [title] REGEXP :p', [':p' => 'a']);
+} catch (InvalidQueryException $e) {
+	$rxWrite = $e->getMessage();
+}
+ok('REGEXP in a write is refused by name', str_contains($rxWrite, 'writes'), $rxWrite);
+ok(
+	'and the write did not run',
+	(int) $rxConnection->query('SELECT COUNT(*) FROM {rx}')->fetchField() === 5,
+);
+ok(
+	'MD5() in the select list is computed in PHP',
+	$rxConnection->query('SELECT MD5([title]) AS [h] FROM {rx} WHERE [id] = 1')->fetchField() ===
+		md5('Alpha one'),
+);
+ok(
+	'SUBSTRING_INDEX() counts from the left',
+	$rxConnection
+		->query("SELECT SUBSTRING_INDEX([title], ' ', 1) AS [w] FROM {rx} WHERE [id] = 2")
+		->fetchField() === 'beta',
+);
+ok(
+	'a positional parameter beside MD5() stays bound',
+	$rxConnection
+		->query('SELECT MD5([title]) AS [h] FROM {rx} WHERE [id] = ?', [1])
+		->fetchField() === md5('Alpha one'),
+);
+ok(
+	'and from the right with a negative count, as MySQL does',
+	$rxConnection
+		->query("SELECT SUBSTRING_INDEX([title], ' ', -1) AS [w] FROM {rx} WHERE [id] = 2")
+		->fetchField() === 'two',
+);
+
+// --- MySQL date functions ---------------------------------------------------
+//
+// openintranet's engagement reports and open_social's KPI blocks store MySQL-dialect SQL.
+echo "\nMySQL date functions\n";
+ok(
+	'HOUR(FROM_UNIXTIME(x)) becomes strftime over unixepoch, innermost first',
+	SqlAnalyzer::rewriteDateFunctions('SELECT HOUR(FROM_UNIXTIME(created)) FROM t') ===
+		"SELECT CAST(strftime('%H', datetime(created, 'unixepoch')) AS INTEGER) FROM t",
+	SqlAnalyzer::rewriteDateFunctions('SELECT HOUR(FROM_UNIXTIME(created)) FROM t'),
+);
+ok(
+	'a function name inside a literal is left alone',
+	SqlAnalyzer::rewriteDateFunctions("SELECT 'now()' FROM t") === "SELECT 'now()' FROM t",
+);
+ok(
+	'a column called hour is not a call',
+	SqlAnalyzer::rewriteDateFunctions('SELECT t.hour (x) FROM t') === 'SELECT t.hour (x) FROM t',
+);
+ok(
+	'a format with no strftime equivalent is left for the engine to refuse',
+	SqlAnalyzer::rewriteDateFunctions("SELECT DATE_FORMAT(d, '%M') FROM t") ===
+		"SELECT DATE_FORMAT(d, '%M') FROM t",
+);
+[$dfHost, $dfConnection] = connect();
+$dfConnection->query('CREATE TABLE {ev} ([id] INTEGER PRIMARY KEY, [created] INTEGER)');
+// 2026-09-27 14:05:09 UTC, a Sunday
+$dfConnection
+	->insert('ev')
+	->fields(['id' => 1, 'created' => 1790517909])
+	->execute();
+$df = $dfConnection
+	->query(
+		"SELECT HOUR(FROM_UNIXTIME(created)) AS h, DAYOFWEEK(FROM_UNIXTIME(created)) AS dow, WEEKDAY(FROM_UNIXTIME(created)) AS wd, DATE(FROM_UNIXTIME(created)) AS d, FROM_UNIXTIME(created, '%Y-%m-%d %H:%i') AS f, YEAR(FROM_UNIXTIME(created)) AS y, UNIX_TIMESTAMP(FROM_UNIXTIME(created)) AS back, DATE_SUB(FROM_UNIXTIME(created), INTERVAL 7 DAY) AS week_ago, DATE_ADD(FROM_UNIXTIME(created), INTERVAL id MONTH) AS next FROM {ev}",
+	)
+	->fetchAssoc();
+ok('HOUR', (int) $df['h'] === 14, var_export($df, true));
+ok('DAYOFWEEK counts Sunday as 1', (int) $df['dow'] === 1);
+ok('WEEKDAY counts Monday as 0', (int) $df['wd'] === 6);
+ok('DATE over FROM_UNIXTIME', $df['d'] === '2026-09-27');
+ok('FROM_UNIXTIME with a format', $df['f'] === '2026-09-27 14:05');
+ok('YEAR', (int) $df['y'] === 2026);
+ok('UNIX_TIMESTAMP round-trips', (int) $df['back'] === 1790517909);
+ok('DATE_SUB with a literal interval', $df['week_ago'] === '2026-09-20 14:05:09');
+ok(
+	'DATE_ADD with an expression interval',
+	$df['next'] === '2026-10-27 14:05:09',
+	(string) $df['next'],
+);
+$joinRefusal = '';
+try {
+	$dfConnection->query('UPDATE {ev} AS e LEFT JOIN {ev} AS f ON e.id = f.id SET e.created = 0');
+} catch (Throwable $e) {
+	$joinRefusal = $e->getMessage();
+}
+ok(
+	'UPDATE ... JOIN is refused by name',
+	str_contains($joinRefusal, 'UPDATE ... JOIN'),
+	$joinRefusal,
+);
+$indexRefusal = '';
+try {
+	$dfConnection->query('ALTER TABLE {ev} ADD INDEX created_idx (created)');
+} catch (Throwable $e) {
+	$indexRefusal = $e->getMessage();
+}
+ok(
+	'ALTER TABLE ... ADD INDEX is refused by name',
+	str_contains($indexRefusal, 'ADD INDEX'),
+	$indexRefusal,
+);
+
 // an unbound marker must refuse rather than run an untranslated pattern
 $markerRefused = false;
 try {
@@ -2876,9 +3168,11 @@ $deleteSql = 'DELETE FROM "j" WHERE "hash" IN (' . implode(', ', $names) . ')';
 $deleteStmt = $p43Conn->prepareStatement($deleteSql, [], true);
 $beforeCalls = $p43Host->execCalls;
 $deleteStmt->execute($args);
+// it used to go as batches; the list is folded into one json_each parameter now
 ok(
-	'an oversized DELETE ... IN is split rather than refused',
-	$p43Host->execCalls - $beforeCalls >= 2,
+	'an oversized DELETE ... IN runs rather than being refused, as one folded statement',
+	$p43Host->execCalls - $beforeCalls === 1 &&
+		str_contains((string) end($p43Host->statements), 'json_each'),
 	(string) ($p43Host->execCalls - $beforeCalls),
 );
 // the narrowing is exactly two statement kinds wide, and everything else keeps the old refusal
@@ -2891,14 +3185,22 @@ try {
 }
 ok('an oversized INSERT is still refused, because there is no IN list to partition', $insertThrew);
 
+// folded, the cut is exact, so the driver sends it whole; whether the engine accepts DELETE ...
+// LIMIT is a compile flag (SQLITE_ENABLE_UPDATE_DELETE_LIMIT) and is not what this asserts
 $limited = 'DELETE FROM "j" WHERE "hash" IN (' . implode(', ', $names) . ') LIMIT 5';
-$limitThrew = false;
+$beforeLimit = $p43Host->execCalls;
 try {
 	$p43Conn->prepareStatement($limited, [], true)->execute($args);
 } catch (Throwable) {
-	$limitThrew = true;
 }
-ok('a DELETE ... LIMIT is still refused, because the cut cannot be reconstructed', $limitThrew);
+$sentLimit = (string) end($p43Host->statements);
+ok(
+	'a DELETE ... LIMIT goes as one folded statement, never as batches that would each cut',
+	$p43Host->execCalls - $beforeLimit === 1 &&
+		str_contains($sentLimit, 'json_each') &&
+		str_contains($sentLimit, 'LIMIT 5'),
+	$sentLimit,
+);
 
 // --- the record cap, DECLARED ----------------------------------------------
 [$capHost, $capConn] = connect();
@@ -2925,6 +3227,38 @@ try {
 	$underThrew = true;
 }
 ok('CONTROL: a value AT the cap is accepted', !$underThrew);
+// a cache entry past the cap is evicted rather than refused, so the page that set it still renders
+$capConn->runStatement(
+	'CREATE TABLE "cache_data" ("cid" TEXT PRIMARY KEY, "expire" INTEGER, "data" BLOB)',
+	[],
+);
+$capConn->runStatement('INSERT INTO "cache_data" ("cid", "expire", "data") VALUES (:a, :b, :c)', [
+	':a' => 'views_data',
+	':b' => -1,
+	':c' => 'small and stale',
+]);
+$cacheThrew = false;
+try {
+	$capConn->runStatement(
+		'INSERT INTO "cache_data" ("cid", "expire", "data") VALUES (:a, :b, :c) ON CONFLICT ("cid") DO UPDATE SET "data" = excluded."data"',
+		[
+			':a' => 'views_data',
+			':b' => -1,
+			':c' => str_repeat('x', Connection::MAX_RECORD_BYTES + 1),
+		],
+	);
+} catch (Throwable) {
+	$cacheThrew = true;
+}
+$left = $capConn->runStatement('SELECT COUNT(*) AS n FROM "cache_data" WHERE "cid" = :a', [
+	':a' => 'views_data',
+]);
+ok('an oversized cache write is not refused', !$cacheThrew);
+ok(
+	'and removes the older copy instead of leaving it to be served',
+	(int) ($left['rows'][0]['n'] ?? -1) === 0,
+	json_encode($left['rows'] ?? null),
+);
 // #endregion
 // #region the external backend, reached by yielding rather than by the bridge
 echo "\n# the parked statement, for a site whose database is not the object's own\n";
@@ -3009,6 +3343,46 @@ try {
 }
 ok('a refused park raises rather than answering', $refusalThrew instanceof HostBridgeException);
 ok('and it did NOT fall through to the local bridge', $refusedHost->execCalls === 0);
+// #endregion
+// #region an IN list longer than the host allows
+//
+// A menu rebuild on a migrated Thunder site ran `id NOT IN (...)` over 400 links and the host
+// refused it at 100 parameters. Batching answers IN by union, which for NOT IN keeps every row
+// missing from any one batch, so the list is folded into one json_each parameter instead
+echo "\nIN lists past the parameter cap\n";
+[$inHost, $inConnection] = connect();
+$inHost->pdo->exec('CREATE TABLE menu_tree (id TEXT PRIMARY KEY, discovered INTEGER)');
+$insert = $inHost->pdo->prepare('INSERT INTO menu_tree VALUES (?, 1)');
+for ($i = 1; $i <= 450; $i++) {
+	$insert->execute(['link' . $i]);
+}
+$keep = array_map(static fn(int $i): string => 'link' . $i, range(1, 400));
+$stale = $inConnection
+	->query('SELECT id FROM {menu_tree} WHERE discovered = :d AND id NOT IN (:ids[])', [
+		':d' => 1,
+		':ids[]' => $keep,
+	])
+	->fetchCol();
+ok('NOT IN over 400 names answers the 50 rows outside the list', count($stale) === 50);
+ok('and only those', !in_array('link1', $stale, true) && in_array('link450', $stale, true));
+$first = $inConnection
+	->query('SELECT id FROM {menu_tree} WHERE id IN (:ids[]) ORDER BY id LIMIT 3', [
+		':ids[]' => $keep,
+	])
+	->fetchCol();
+ok('IN with ORDER BY and LIMIT, which batching refused, answers too', count($first) === 3);
+$inConnection->query('DELETE FROM {menu_tree} WHERE id NOT IN (:ids[])', [':ids[]' => $keep]);
+ok(
+	'a NOT IN delete removes exactly the rows outside the list',
+	(int) $inHost->pdo->query('SELECT COUNT(*) FROM menu_tree')->fetchColumn() === 400,
+);
+[$folded, $foldedArgs] = Connection::collapseInLists(
+	'SELECT 1 WHERE x IN (' .
+		implode(', ', array_map(static fn(int $i): string => ':p' . $i, range(1, 150))) .
+		')',
+	array_combine(array_map(static fn(int $i): string => ':p' . $i, range(1, 150)), range(1, 150)),
+);
+ok('the fold binds one parameter', count($foldedArgs) === 1 && str_contains($folded, 'json_each'));
 // #endregion
 echo "\nhost calls: {$host->execCalls} single, {$host->txnCalls} transactional ({$host->speculativeCalls} rolled back over {$host->replayedStatements} replayed statements)\n";
 echo "\n$pass passed, $fail failed\n";

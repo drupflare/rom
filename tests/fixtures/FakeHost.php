@@ -302,6 +302,16 @@ final class FakeHost
 			// the host's own wording, so a driver that catches it matches on the real text
 			throw new \RuntimeException('too many SQL variables: SQLITE_ERROR');
 		}
+		// the host's 50-byte LIKE/GLOB pattern ceiling, measured on ctx.storage.sql; local sqlite
+		// allows 50,000, so without this an oversized pattern passes here and fails in production
+		if (preg_match_all('/\b(?:LIKE|GLOB)\s+(:[A-Za-z0-9_]+)/i', $sql, $likes) > 0) {
+			foreach ($likes[1] as $name) {
+				$value = $params[$name] ?? ($params[substr($name, 1)] ?? null);
+				if (is_string($value) && strlen($value) > 50) {
+					throw new \RuntimeException('LIKE or GLOB pattern too complex: SQLITE_ERROR');
+				}
+			}
+		}
 		$statement = $this->pdo->prepare($sql);
 		$statement->execute($this->bind($params));
 		$rows = [];
