@@ -16,6 +16,11 @@
 			"matchPackageNames": ["symfony/**", "guzzlehttp/**", "psr/**"],
 			"matchUpdateTypes": ["major"],
 			"enabled": false
+		},
+		{
+			"matchPackageNames": ["typescript", "vitest", "@vitest/**"],
+			"matchUpdateTypes": ["major"],
+			"enabled": false
 		}
 	]
 }
