@@ -235,6 +235,26 @@ ok(
 	version_compare($connection->version(), '3.0', '>='),
 	$connection->version(),
 );
+ok(
+	"MySQL's SELECT VERSION() answers with the engine version",
+	$connection->query('SELECT VERSION()')->fetchCol()[0] === $connection->version(),
+	var_export($connection->query('SELECT VERSION()')->fetchCol(), true),
+);
+ok(
+	'the version query keeps an alias it was given',
+	$connection->query('SELECT VERSION() AS v;')->fetchField() === $connection->version(),
+);
+ok(
+	'a version call inside a larger statement is left to the engine',
+	preg_match(
+		'/^SELECT VERSION\(\), 1$/',
+		(string) (new ReflectionMethod($connection, 'preprocessStatement'))->invoke(
+			$connection,
+			'SELECT VERSION(), 1',
+			[],
+		),
+	) === 1,
+);
 
 $id = $connection
 	->insert('node')

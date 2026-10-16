@@ -424,6 +424,21 @@ class Connection extends SqliteDriverConnection
 		$sql = SqlAnalyzer::rewriteDateFunctions(
 			SqlAnalyzer::rewriteFunctions(parent::preprocessStatement($query, $options)),
 		);
+		// MySQL's version query, which a module sends when the driver is not one it knows by name
+		// (json_field's requirements check did, and /admin/reports/status answered 500). The engine
+		// refuses sqlite_version() here, so the answer is the one version() already settled on
+		if (
+			preg_match(
+				'/^\s*SELECT\s+VERSION\s*\(\s*\)(\s+AS\s+(?:\w+|"[^"]+"|\[[^\]]+\]))?\s*;?\s*$/i',
+				$sql,
+				$version_query,
+			) === 1
+		) {
+			$version = $this->version();
+			if (preg_match('/^[0-9][0-9.]*$/', $version) === 1) {
+				return "SELECT '" . $version . "'" . ($version_query[1] ?? ' AS "VERSION()"');
+			}
+		}
 		// MySQL-only statement shapes, refused by name rather than as an engine syntax error
 		if (preg_match('/^\s*UPDATE\b(?:(?!\bSET\b).)*\bJOIN\b/is', $sql) === 1) {
 			throw new InvalidQueryException(
