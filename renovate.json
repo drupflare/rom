@@ -4,7 +4,13 @@
 	"dependencyDashboard": false,
 	"packageRules": [
 		{
-			"matchUpdateTypes": ["minor", "patch", "pin", "digest"]
+			"matchUpdateTypes": ["minor", "patch", "pin"]
+		},
+		{
+			"description": "a digest-only bump re-runs every lane for no version change; the pin moves with the next tag",
+			"matchDatasources": ["docker"],
+			"matchUpdateTypes": ["digest"],
+			"enabled": false
 		},
 		{
 			"description": "drupal/core is the supported-range declaration for a driver, not a dependency to chase",
