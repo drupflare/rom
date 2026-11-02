@@ -66,4 +66,15 @@
 		<exclude name="Drupal.Classes.UseGlobalClass.RedundantUseStatement" />
 		<exclude name="VariableAnalysis.CodeAnalysis.VariableAnalysis.UnusedVariable" />
 	</rule>
+
+	<!--
+		This sniff tracks every variable in a scope against every other, so its cost grows faster
+		than the scope does. run-driver-suite.php is one 3,400-line script with a single global
+		scope: 12.6 seconds with the sniff and 2.1 without. The same sniff took 7 minutes on a
+		sibling repo's 8,400-line suite, past its CI timeout. The suite runs every line in CI, so
+		an undefined variable fails there.
+	-->
+	<rule ref="VariableAnalysis.CodeAnalysis.VariableAnalysis">
+		<exclude-pattern>tests/run-driver-suite.php</exclude-pattern>
+	</rule>
 </ruleset>
