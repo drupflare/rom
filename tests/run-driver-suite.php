@@ -3073,7 +3073,7 @@ try {
 }
 ok('the schema refuses a connection that is not this driver', $wrongSchema);
 // #endregion
-// #region P43: three platform limits the driver now accommodates or declares
+// #region three platform limits the driver accommodates or declares
 //
 // Each one was found by a REAL module rather than by reading the limits page, and each keeps the
 // shape `splitPointFor()` established: refuse far more than you accept, and say why in the
