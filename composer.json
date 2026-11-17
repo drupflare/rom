@@ -46,7 +46,8 @@
 			"src/pdo-shim.php"
 		],
 		"psr-4": {
-			"Drupal\\cfw_do_sqlite\\": "src/"
+			"Drupal\\cfw_do_sqlite\\": "src/",
+			"Drupflare\\Rom\\": "src/"
 		}
 	},
 	"extra": {
@@ -73,7 +74,8 @@
 		"lint:fix": "phpcbf",
 		"test": "php tests/run-driver-suite.php",
 		"test:installer": "php tests/run-installer.php",
-		"test:pdo": "php tests/pdo-shim.php"
+		"test:pdo": "php tests/pdo-shim.php",
+		"test:lexer": "php tests/sql-lexer.php"
 	},
 	"scripts-descriptions": {
 		"analyze": "Runs PHPStan over src/ and tests/ at the level pinned in phpstan.neon.",
@@ -81,6 +83,7 @@
 		"lint:fix": "Runs phpcbf over the same ruleset.",
 		"test": "Runs the driver suite; needs a Drupal 11.2+ root in $DRUPAL_ROOT or argv[1].",
 		"test:installer": "Installs a Drupal site through the driver into a throwaway copy of that root.",
-		"test:pdo": "Checks src/pdo-shim.php against this PHP's ext-pdo and against core's PDO usage."
+		"test:pdo": "Checks src/pdo-shim.php against this PHP's ext-pdo and against core's PDO usage.",
+		"test:lexer": "Checks the MySQL lexer in src/Sql/; needs nothing but PHP."
 	}
 }
