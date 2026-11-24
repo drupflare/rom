@@ -18,7 +18,7 @@
 		"lint:php:fix": "./vendor/bin/phpcbf"
 	},
 	"devDependencies": {
-		"@prettier/plugin-php": "^0.25.0",
+		"@prettier/plugin-php": "^0.26.0",
 		"@prettier/plugin-xml": "^3.4.2",
 		"husky": "^9.1.7",
 		"lint-staged": "^17.3.0",
