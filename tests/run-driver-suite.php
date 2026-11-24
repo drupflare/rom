@@ -3404,6 +3404,63 @@ ok(
 );
 ok('the fold binds one parameter', count($foldedArgs) === 1 && str_contains($folded, 'json_each'));
 // #endregion
+// #region a serial column inside a composite primary key
+//
+// A Drupal 7 contrib schema declares a serial `oid` and a primary key of `oid` and `name`. MySQL
+// takes it. The core sqlite driver emitted `oid INTEGER PRIMARY KEY AUTOINCREMENT` and a second
+// PRIMARY KEY (name), which SQLite refuses with "more than one primary key"
+echo "\nA serial column in a composite primary key\n";
+[$serialHost, $serialConnection] = connect();
+$serialSchema = [
+	'fields' => [
+		'oid' => ['type' => 'serial', 'unsigned' => true, 'not null' => true],
+		'name' => ['type' => 'varchar', 'length' => 128, 'not null' => true],
+		'type' => ['type' => 'varchar', 'length' => 32, 'not null' => true],
+	],
+	'primary key' => ['oid', 'name'],
+];
+$serialConnection->schema()->createTable('defaultconfig_optionals', $serialSchema);
+ok('the table is created', $serialConnection->schema()->tableExists('defaultconfig_optionals'));
+$serialSql = (string) $serialHost->pdo
+	->query("SELECT sql FROM sqlite_master WHERE name = 'defaultconfig_optionals'")
+	->fetchColumn();
+ok('the serial column is the only primary key', substr_count($serialSql, 'PRIMARY KEY') === 1);
+ok(
+	'the declared columns are a unique index',
+	$serialConnection->schema()->indexExists('defaultconfig_optionals', 'composite_primary'),
+);
+$serialConnection
+	->insert('defaultconfig_optionals')
+	->fields(['name' => 'a', 'type' => 'node'])
+	->execute();
+$serialConnection
+	->insert('defaultconfig_optionals')
+	->fields(['name' => 'b', 'type' => 'node'])
+	->execute();
+ok(
+	'rows with different keys get their own serial values',
+	(int) $serialConnection
+		->query('SELECT MAX(oid) FROM {defaultconfig_optionals}')
+		->fetchField() === 2,
+);
+$serialPlain = [
+	'fields' => [
+		'id' => ['type' => 'int', 'not null' => true],
+		'v' => ['type' => 'int', 'not null' => true],
+	],
+	'primary key' => ['id', 'v'],
+];
+$serialConnection->schema()->createTable('plain_composite', $serialPlain);
+$plainSql = (string) $serialHost->pdo
+	->query("SELECT sql FROM sqlite_master WHERE name = 'plain_composite'")
+	->fetchColumn();
+ok(
+	'a composite key with no serial column is left as declared',
+	str_contains($plainSql, 'PRIMARY KEY ("id", "v")') &&
+		!$serialConnection->schema()->indexExists('plain_composite', 'composite_primary'),
+	$plainSql,
+);
+// #endregion
 echo "\nhost calls: {$host->execCalls} single, {$host->txnCalls} transactional ({$host->speculativeCalls} rolled back over {$host->replayedStatements} replayed statements)\n";
 echo "\n$pass passed, $fail failed\n";
 exit($fail === 0 ? 0 : 1);

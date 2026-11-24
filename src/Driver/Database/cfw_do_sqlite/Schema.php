@@ -95,6 +95,7 @@ class Schema extends SqliteDriverSchema
 	 */
 	public function createTableSql($name, $table)
 	{
+		$table = self::serialKeyedTable($table);
 		$sql = parent::createTableSql($name, $table);
 
 		if (isset($sql[0]) && $this->storesAsPrimaryKey($name, $table)) {
@@ -102,6 +103,41 @@ class Schema extends SqliteDriverSchema
 		}
 
 		return $sql;
+	}
+
+	/**
+	 * Moves a composite primary key that contains a serial column onto the serial column.
+	 *
+	 * MySQL takes `'primary key' => ['oid', 'name']` with a serial `oid`. SQLite makes a serial
+	 * column `INTEGER PRIMARY KEY AUTOINCREMENT`, the core driver drops it from the declared key,
+	 * and the remaining columns become a second PRIMARY KEY, which SQLite refuses. The serial
+	 * column alone is the key here and the declared columns become a unique index. That rejects
+	 * no row MySQL would take, because the serial column is unique by itself.
+	 *
+	 * @param array $table
+	 *   The Drupal schema definition.
+	 *
+	 * @return array
+	 *   The definition, rewritten when it has such a key.
+	 */
+	private static function serialKeyedTable(array $table): array
+	{
+		$key = $table['primary key'] ?? [];
+		if (!is_array($key) || count($key) < 2) {
+			return $table;
+		}
+		$names = array_map(static fn($column) => is_array($column) ? $column[0] : $column, $key);
+		foreach ($table['fields'] ?? [] as $field => $spec) {
+			if (($spec['type'] ?? '') === 'serial' && in_array($field, $names, true)) {
+				$table['primary key'] = [$field];
+				$table['unique keys'] = ($table['unique keys'] ?? []) + [
+					'composite_primary' => $key,
+				];
+				break;
+			}
+		}
+
+		return $table;
 	}
 
 	/**
